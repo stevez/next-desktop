@@ -1,0 +1,83 @@
+name: Desktop app (Windows and Mac)
+
+# Template from next-desktop. Copy to .github/workflows/ and fill in the TODOs.
+#
+# Stages the web app once on Linux, then packages it on a Windows and a macOS runner and uploads
+# the zips. If your Linux runner can reach every package but the OS runners can't (a private
+# registry, say), keep install-tools; otherwise you can replace it with `npm ci`.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  APP_NAME: Acme Demo # TODO: `name` in desktop.config.mjs
+  ARTIFACT: Acme-Demo # TODO: `artifactName` in desktop.config.mjs
+  OUT_DIR: dist-desktop # TODO: `outDir` in desktop.config.mjs
+  # TODO: path to next-desktop's bin/next-desktop.mjs in your repo. The package job runs it before
+  # anything is installed, so it can't come from node_modules there.
+  NEXT_DESKTOP: packages/next-desktop/bin/next-desktop.mjs
+
+jobs:
+  stage:
+    name: Build the web app (Linux)
+    runs-on: ubuntu-latest # TODO: a runner that can reach your registry
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+      - run: npm ci
+      - run: node "$NEXT_DESKTOP" stage
+      # A tarball keeps file modes and symlinks, which upload-artifact drops.
+      - run: tar -czf desktop-stage.tgz "$OUT_DIR"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-stage
+          path: desktop-stage.tgz
+          if-no-files-found: error
+          retention-days: 1
+
+  package:
+    name: Package the ${{ matrix.label }} app
+    needs: stage
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: windows-latest, label: Windows, suffix: win }
+          - { os: macos-latest, label: Mac, suffix: mac }
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/download-artifact@v4
+        with:
+          name: desktop-stage
+      - run: tar -xzf desktop-stage.tgz && rm desktop-stage.tgz
+      - name: Install the packaging tools from public npm
+        run: node "$NEXT_DESKTOP" install-tools
+      - name: Package the app
+        run: node "$NEXT_DESKTOP" package
+        env:
+          # The Mac app is ad-hoc signed (no certificate); electron-builder skips that on PRs otherwise.
+          CSC_FOR_PULL_REQUEST: 'true'
+      # TODO: add a smoke test. The app logs "[next-desktop] app ready at <url>" to servers.log in
+      # %APPDATA%\$APP_NAME (Windows) or ~/Library/Application Support/$APP_NAME (Mac).
+      # Write one for each system: launch the app, check the page, close it, check the servers stopped.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-${{ matrix.suffix }}
+          path: ${{ env.OUT_DIR }}/out/${{ env.ARTIFACT }}-*-${{ matrix.suffix }}.zip
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 30 # TODO: how long GitHub keeps the zips (default 90)

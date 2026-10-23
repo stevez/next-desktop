@@ -1,0 +1,37 @@
+{
+  "name": "next-desktop",
+  "version": "0.1.0",
+  "description": "Package a Next.js app as a Windows or Mac desktop app (Electron), with optional local servers such as a mock backend.",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "next-desktop": "bin/next-desktop.mjs"
+  },
+  "files": [
+    "bin",
+    "src",
+    "templates",
+    "!src/**/__tests__"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "vitest": ">=3"
+  },
+  "peerDependencies": {
+    "electron": ">=33",
+    "electron-builder": ">=26",
+    "esbuild": ">=0.24",
+    "next": ">=15"
+  },
+  "peerDependenciesMeta": {
+    "esbuild": {
+      "optional": true
+    }
+  }
+}
