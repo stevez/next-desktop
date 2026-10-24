@@ -1,15 +1,17 @@
-# next-desktop
+# web-terrarium
 
-Turns a Next.js app into a Windows or Mac desktop app (Electron). The desktop app runs the Next.js standalone server, plus any local servers you list (for example a mock backend), on `127.0.0.1`, and shows the app in a window. Users don't need Node or the repo.
+Packages a Node.js web app and its local servers as a Windows or Mac desktop app (Electron): a sealed little world with the app, its servers and its mocks in one box. The desktop app runs the web server, plus any local servers you list (for example a mock backend), on `127.0.0.1`, and shows the app in a window. Users don't need Node or the repo.
 
 It's built for demos and offline tools: the app is unsigned (ad-hoc signed on Mac) and is shared as a zip within the team.
+
+> **Status:** web-terrarium was called next-desktop, and the `next-desktop` command still works. Today it packages **Next.js** apps. Support for Vite and other static apps, and for Express and other Node servers, is planned: see the [roadmap](https://github.com/stevez/web-terrarium/issues/6).
 
 How it works inside (modules, build and run-time flow, security, how to extend): [docs/architecture.md](docs/architecture.md).
 
 ## Set up a project
 
 1. Add the tools as devDependencies: `electron`, `electron-builder`, and `esbuild` if you list extra servers.
-2. In `next.config.js`, build standalone into the folder next-desktop asks for. The desktop build then never mixes with the normal `.next` build:
+2. In `next.config.js`, build standalone into the folder web-terrarium asks for. The desktop build then never mixes with the normal `.next` build:
 
    ```js
    const nextConfig = {
@@ -45,12 +47,12 @@ How it works inside (modules, build and run-time flow, security, how to extend):
 4. Add scripts to `package.json`:
 
    ```json
-   "desktop:build": "next-desktop build",
-   "desktop:stage": "next-desktop stage",
-   "desktop:start": "next-desktop start"
+   "desktop:build": "web-terrarium build",
+   "desktop:stage": "web-terrarium stage",
+   "desktop:start": "web-terrarium start"
    ```
 
-   While the package lives inside a repo, call it by path, for example `node packages/next-desktop/bin/next-desktop.mjs build`.
+   If web-terrarium isn't installed from npm, call it by path, for example `node path/to/web-terrarium/bin/web-terrarium.mjs build`.
 
 ## Commands
 

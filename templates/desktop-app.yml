@@ -1,6 +1,6 @@
 name: Desktop app (Windows and Mac)
 
-# Template from next-desktop. Copy to .github/workflows/ and fill in the TODOs.
+# Template from web-terrarium. Copy to .github/workflows/ and fill in the TODOs.
 #
 # Stages the web app once on Linux, then packages it on a Windows and a macOS runner and uploads
 # the zips. If your Linux runner can reach every package but the OS runners can't (a private
@@ -15,9 +15,9 @@ env:
   APP_NAME: Acme Demo # TODO: `name` in desktop.config.mjs
   ARTIFACT: Acme-Demo # TODO: `artifactName` in desktop.config.mjs
   OUT_DIR: dist-desktop # TODO: `outDir` in desktop.config.mjs
-  # TODO: path to next-desktop's bin/next-desktop.mjs in your repo. The package job runs it before
+  # TODO: path to web-terrarium's bin/web-terrarium.mjs in your repo. The package job runs it before
   # anything is installed, so it can't come from node_modules there.
-  NEXT_DESKTOP: packages/next-desktop/bin/next-desktop.mjs
+  NEXT_DESKTOP: packages/web-terrarium/bin/web-terrarium.mjs
 
 jobs:
   stage:

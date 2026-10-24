@@ -42,7 +42,7 @@ const stageWeb = (config, paths) => {
   if (!fs.existsSync(path.join(built, 'standalone', 'server.js'))) {
     throw new Error(
       `No standalone server in ${built}. next.config.js needs output: 'standalone' and ` +
-        'distDir from NEXT_DESKTOP_DIST_DIR (see the next-desktop README).',
+        'distDir from NEXT_DESKTOP_DIST_DIR (see the web-terrarium README).',
     );
   }
   copy(path.join(built, 'standalone'), paths.web);
@@ -91,7 +91,7 @@ export const stageApp = async (config) => {
 
 const requireStage = (paths) => {
   if (!fs.existsSync(path.join(paths.stage, 'app.json'))) {
-    throw new Error(`Nothing staged in ${paths.stage}. Run next-desktop stage first.`);
+    throw new Error(`Nothing staged in ${paths.stage}. Run web-terrarium stage first.`);
   }
 };
 

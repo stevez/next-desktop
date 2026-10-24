@@ -1,12 +1,32 @@
 {
-  "name": "next-desktop",
+  "name": "web-terrarium",
   "version": "0.1.0",
-  "description": "Package a Next.js app as a Windows or Mac desktop app (Electron), with optional local servers such as a mock backend.",
+  "description": "Package a Node.js web app (Next.js, Vite, Express) and its local servers, such as a mock backend, as a Windows or Mac desktop app (Electron).",
   "private": true,
   "license": "MIT",
+  "author": "Steve Zhang",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/stevez/web-terrarium.git"
+  },
+  "homepage": "https://github.com/stevez/web-terrarium#readme",
+  "bugs": {
+    "url": "https://github.com/stevez/web-terrarium/issues"
+  },
+  "keywords": [
+    "electron",
+    "desktop",
+    "nextjs",
+    "vite",
+    "nodejs",
+    "offline",
+    "demo",
+    "mock-server"
+  ],
   "type": "module",
   "bin": {
-    "next-desktop": "bin/next-desktop.mjs"
+    "web-terrarium": "bin/web-terrarium.mjs",
+    "next-desktop": "bin/web-terrarium.mjs"
   },
   "files": [
     "bin",

@@ -33,6 +33,6 @@ export const run = async (args, { cwd = process.cwd() } = {}) => {
   if (options.package) {
     await packageApp(config, target);
   } else {
-    console.log('\nStaged. Run `next-desktop start` to open it.');
+    console.log('\nStaged. Run `web-terrarium start` to open it.');
   }
 };
