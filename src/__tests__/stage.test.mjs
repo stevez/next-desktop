@@ -52,7 +52,9 @@ describe('electronPackageJson', () => {
 });
 
 describe('esbuildOptions', () => {
-  const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'web-terrarium-bundle-'));
+  // The real path: on macOS the temp folder is a symlink (/var -> /private/var), and Node
+  // reports a module's real path in import.meta.url.
+  const temp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'web-terrarium-bundle-')));
   afterAll(() => fs.rmSync(temp, { recursive: true, force: true }));
   const write = (file, text) => {
     fs.mkdirSync(path.dirname(path.join(temp, file)), { recursive: true });
