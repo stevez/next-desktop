@@ -2,7 +2,7 @@ import path from 'node:path';
 
 import { describe, expect, it, vi } from 'vitest';
 
-import { builderConfig, hostTarget, parseCli } from '../packageConfig';
+import { builderConfig, configFile, hostTarget, parseCli, usage } from '../packageConfig';
 
 describe('parseCli', () => {
   it('builds, stages and packages by default', () => {
@@ -10,8 +10,19 @@ describe('parseCli', () => {
       command: 'build',
       stage: true,
       package: true,
-      config: 'desktop.config.mjs',
+      config: undefined,
     });
+  });
+
+  it.each([
+    [['help'], 'help'],
+    [['--help'], 'help'],
+    [['-h'], 'help'],
+    [['version'], 'version'],
+    [['--version'], 'version'],
+    [['-v'], 'version'],
+  ])('reads %j as the %s command', (args, command) => {
+    expect(parseCli(args)).toMatchObject({ command, stage: false, package: false });
   });
 
   it('only builds and stages with stage', () => {
@@ -34,15 +45,60 @@ describe('parseCli', () => {
   it.each([
     [['ship'], 'Unknown command "ship"'],
     [['--config'], '--config needs a file'],
-    [['build', '--verbose'], 'Unknown option "--verbose"'],
+    [['build', '--verbose'], 'Unknown option "--verbose". Run web-terrarium --help'],
   ])('refuses %j', (args, message) => {
     expect(() => parseCli(args)).toThrow(message);
+  });
+});
+
+describe('usage', () => {
+  it('shows the version, every command and the config option', () => {
+    const text = usage('1.2.3');
+
+    expect(text).toMatch(/^web-terrarium 1\.2\.3\n/);
+    ['build', 'stage', 'package', 'start', 'install-tools', 'help', 'version', '--config'].forEach(
+      (word) => expect(text).toContain(`  ${word} `),
+    );
+    expect(text).toContain('terrarium.config.mjs');
+  });
+});
+
+describe('configFile', () => {
+  const cwd = path.resolve('project');
+  const has = (...names) => (file) => names.some((name) => file === path.join(cwd, name));
+
+  it('uses --config when given, from the working folder', () => {
+    expect(configFile({ cwd, config: 'demo/app.mjs', exists: has() })).toBe(
+      path.join(cwd, 'demo', 'app.mjs'),
+    );
+  });
+
+  it('uses terrarium.config.mjs by default', () => {
+    expect(configFile({ cwd, exists: has('terrarium.config.mjs', 'desktop.config.mjs') })).toBe(
+      path.join(cwd, 'terrarium.config.mjs'),
+    );
+  });
+
+  it('falls back to the old desktop.config.mjs when only that one exists', () => {
+    expect(configFile({ cwd, exists: has('desktop.config.mjs') })).toBe(
+      path.join(cwd, 'desktop.config.mjs'),
+    );
+  });
+
+  it('names terrarium.config.mjs when neither exists, for the error message', () => {
+    expect(configFile({ cwd, exists: has() })).toBe(path.join(cwd, 'terrarium.config.mjs'));
   });
 });
 
 describe('hostTarget', () => {
   it('builds a 64-bit Windows app on Windows', () => {
     expect(hostTarget('win32', 'x64')).toEqual({ platform: 'WINDOWS', arch: 'x64', label: 'Windows' });
+  });
+
+  it('refuses Windows ARM, whose native modules an x64 app cannot load', () => {
+    expect(() => hostTarget('win32', 'arm64')).toThrow(
+      "Windows arm64 isn't supported. Build on an x64 Windows machine.",
+    );
   });
 
   it('builds for Apple Silicon on an Apple Silicon Mac', () => {
@@ -102,6 +158,25 @@ describe('builderConfig', () => {
     expect(win.artifactName).toBe('Acme-Demo-${version}-win.${ext}');
     // eslint-disable-next-line no-template-curly-in-string -- electron-builder placeholders
     expect(mac.artifactName).toBe('Acme-Demo-${version}-mac.${ext}');
+  });
+
+  it('uses Electron icons when the app has none', () => {
+    const { win, mac } = make();
+
+    expect(win.icon).toBeUndefined();
+    expect(mac.icon).toBeUndefined();
+  });
+
+  it.each([
+    ['icon.png', 'icon.png', 'icon.png'],
+    ['icon.ico', 'icon.ico', undefined],
+    ['icon.icns', undefined, 'icon.icns'],
+  ])('gives %s to the systems that can use it', (file, winIcon, macIcon) => {
+    const icon = path.join('dist', 'stage', file);
+    const { win, mac } = builderConfig({ config, paths, electronVersion: '44.0.0', copy: vi.fn(), icon });
+
+    expect(win.icon).toBe(winIcon && icon);
+    expect(mac.icon).toBe(macIcon && icon);
   });
 
   it('ad-hoc signs the Mac app without the hardened runtime or notarization', () => {

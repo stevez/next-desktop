@@ -2,7 +2,6 @@
   "name": "web-terrarium",
   "version": "0.1.0",
   "description": "Package a Node.js web app (Next.js, Vite, Express) and its local servers, such as a mock backend, as a Windows or Mac desktop app (Electron).",
-  "private": true,
   "license": "MIT",
   "author": "Steve Zhang",
   "repository": {
@@ -32,6 +31,7 @@
     "bin",
     "src",
     "templates",
+    "CHANGELOG.md",
     "!src/**/__tests__"
   ],
   "engines": {
@@ -53,6 +53,9 @@
   },
   "peerDependenciesMeta": {
     "esbuild": {
+      "optional": true
+    },
+    "next": {
       "optional": true
     }
   }

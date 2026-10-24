@@ -20,14 +20,22 @@ describe('resolveConfig', () => {
       description: 'Acme Demo',
       author: '',
       outDir: path.join(root, 'dist-desktop'),
-      next: { distDir: '.next-desktop', buildEnv: {}, env: {}, readyPath: '/' },
+      app: { type: 'next', distDir: '.next-terrarium', buildEnv: {}, env: {}, readyPath: '/' },
       servers: [],
+      startTimeoutMs: 60000,
       window: { width: 1280, height: 800, loadingText: 'Starting Acme Demo…' },
       errorHint: 'Close other copies of Acme Demo and try again.',
     });
   });
 
   it('keeps the values a project sets', () => {
+    const app = {
+      type: 'next',
+      distDir: '.next-demo',
+      buildEnv: { A: '1' },
+      env: { B: '2' },
+      readyPath: '/health',
+    };
     const config = resolve({
       ...minimal,
       artifactName: 'Acme',
@@ -35,7 +43,8 @@ describe('resolveConfig', () => {
       description: 'Acme on mock data',
       author: 'Acme Inc.',
       outDir: 'out-demo',
-      next: { distDir: '.next-demo', buildEnv: { A: '1' }, env: { B: '2' }, readyPath: '/health' },
+      app,
+      startTimeoutMs: 120000,
       window: { width: 1440, loadingText: 'Wait…' },
       errorHint: 'Restart your laptop.',
     });
@@ -46,11 +55,31 @@ describe('resolveConfig', () => {
       description: 'Acme on mock data',
       author: 'Acme Inc.',
       outDir: path.join(root, 'out-demo'),
-      next: { distDir: '.next-demo', buildEnv: { A: '1' }, env: { B: '2' }, readyPath: '/health' },
+      app,
+      startTimeoutMs: 120000,
       window: { width: 1440, height: 800, loadingText: 'Wait…' },
       errorHint: 'Restart your laptop.',
     });
   });
+
+  it('reads the older next: { ... } as a Next.js app', () => {
+    const config = resolve({ ...minimal, next: { distDir: '.next-demo', env: { B: '2' } } });
+
+    expect(config.app).toEqual({
+      type: 'next',
+      distDir: '.next-demo',
+      buildEnv: {},
+      env: { B: '2' },
+      readyPath: '/',
+    });
+  });
+
+  it.each([['dist-desktop'], ['build/desktop'], [path.join(path.dirname(root), 'elsewhere')]])(
+    'accepts outDir %s, which holds no part of the project',
+    (outDir) => {
+      expect(resolve({ ...minimal, outDir }).outDir).toBe(path.resolve(root, outDir));
+    },
+  );
 
   it('uses the author from package.json', () => {
     const config = resolveConfig(minimal, { root, rootPackage: { version: '1.0.0', author: 'Pkg' } });
@@ -71,6 +100,7 @@ describe('resolveConfig', () => {
           env: { PORT: '{port}' },
           readyPath: '/ready',
         },
+        { name: 'db', entry: 'db/server.mjs', ready: 'tcp' },
       ],
     });
 
@@ -81,6 +111,7 @@ describe('resolveConfig', () => {
         entry: path.join(root, 'mocks', 'server.mjs'),
         copy: [],
         env: {},
+        ready: 'http',
         readyPath: '/',
       },
       {
@@ -89,7 +120,17 @@ describe('resolveConfig', () => {
         entry: path.join(root, 'search', 'index.js'),
         copy: ['data'],
         env: { PORT: '{port}' },
+        ready: 'http',
         readyPath: '/ready',
+      },
+      {
+        name: 'db',
+        label: 'db server',
+        entry: path.join(root, 'db', 'server.mjs'),
+        copy: [],
+        env: {},
+        ready: 'tcp',
+        readyPath: '/',
       },
     ]);
   });
@@ -97,14 +138,32 @@ describe('resolveConfig', () => {
   it.each([
     [{}, 'needs a name'],
     [{ name: 'Acme' }, 'needs an appId'],
+    [{ ...minimal, app: { type: 'next', distDir: '.next' } }, 'must not be .next'],
     [{ ...minimal, next: { distDir: '.next' } }, 'must not be .next'],
     [{ ...minimal, next: { distDir: './.next' } }, 'must not be .next'],
     [{ ...minimal, next: { distDir: '.next/' } }, 'must not be .next'],
     [{ ...minimal, next: { distDir: 'build/../.next' } }, 'must not be .next'],
+    [{ ...minimal, app: { type: 'next' }, next: {} }, 'Use app or next in the config, not both'],
+    [{ ...minimal, app: { type: 'rails' } }, 'app.type must be one of next, got "rails"'],
+    [{ ...minimal, app: {} }, 'app.type must be one of next, got "undefined"'],
+    [{ ...minimal, outDir: '.' }, 'outDir must be a folder inside the project, got "."'],
+    [{ ...minimal, outDir: './' }, 'outDir must be a folder inside the project'],
+    [{ ...minimal, outDir: '..' }, 'outDir must be a folder inside the project'],
+    [{ ...minimal, outDir: '../..' }, 'outDir must be a folder inside the project'],
+    [{ ...minimal, outDir: 'out/../..' }, 'outDir must be a folder inside the project'],
+    [{ ...minimal, outDir: path.parse(root).root }, 'outDir must be a folder inside the project'],
+    [{ ...minimal, startTimeoutMs: 0 }, 'startTimeoutMs must be a whole number'],
+    [{ ...minimal, startTimeoutMs: -5 }, 'startTimeoutMs must be a whole number'],
+    [{ ...minimal, startTimeoutMs: 1.5 }, 'startTimeoutMs must be a whole number'],
+    [{ ...minimal, startTimeoutMs: '60000' }, 'got "60000"'],
     [{ ...minimal, servers: [{ entry: 'a.mjs' }] }, 'Each server needs a name'],
     [{ ...minimal, servers: [{ name: 'app', entry: 'a.mjs' }] }, 'not "app"'],
     [{ ...minimal, servers: [{ name: 'my mock', entry: 'a.mjs' }] }, 'my mock'],
     [{ ...minimal, servers: [{ name: 'mock' }] }, 'Server mock needs an entry'],
+    [
+      { ...minimal, servers: [{ name: 'db', entry: 'a.mjs', ready: 'udp' }] },
+      'Server db: ready must be one of http, tcp, got "udp"',
+    ],
     [
       {
         ...minimal,
@@ -128,14 +187,16 @@ describe('runtimeConfig', () => {
   it('keeps only what the packaged app needs, with staged folder names', () => {
     const config = resolve({
       ...minimal,
-      next: { env: { API_URL: 'http://{host}:{port:mock}' }, buildEnv: { SECRET: 'x' } },
+      app: { type: 'next', env: { API_URL: 'http://{host}:{port:mock}' }, buildEnv: { SECRET: 'x' } },
       servers: [{ name: 'mock', entry: 'mocks/server.mjs', copy: ['seeds'], env: { P: '{port}' } }],
+      startTimeoutMs: 90000,
     });
 
     expect(runtimeConfig(config)).toEqual({
       name: 'Acme Demo',
       window: { width: 1280, height: 800, loadingText: 'Starting Acme Demo…' },
       errorHint: 'Close other copies of Acme Demo and try again.',
+      startTimeoutMs: 90000,
       servers: [
         {
           name: 'mock',
@@ -143,6 +204,7 @@ describe('runtimeConfig', () => {
           dir: 'servers/mock',
           entry: 'server.mjs',
           env: { P: '{port}' },
+          ready: 'http',
           readyPath: '/',
         },
       ],
@@ -155,6 +217,24 @@ describe('runtimeConfig', () => {
         readyPath: '/',
       },
     });
+  });
+});
+
+describe('runtimeConfig appDir', () => {
+  it('starts the app server from its folder inside web/ when Next put it deeper', () => {
+    const app = runtimeConfig(resolve(minimal), { appDir: 'development/my-app' }).app;
+
+    expect(app).toMatchObject({ dir: 'web/development/my-app', entry: 'server.js' });
+  });
+});
+
+describe('icon', () => {
+  it('resolves a configured icon from the project root', () => {
+    expect(resolve({ ...minimal, icon: 'brand/app.png' }).icon).toBe(path.join(root, 'brand', 'app.png'));
+  });
+
+  it('passes the staged icon name to the packaged app', () => {
+    expect(runtimeConfig(resolve(minimal), { icon: 'icon.ico' }).icon).toBe('icon.ico');
   });
 });
 

@@ -12,12 +12,12 @@ permissions:
   contents: read
 
 env:
-  APP_NAME: Acme Demo # TODO: `name` in desktop.config.mjs
-  ARTIFACT: Acme-Demo # TODO: `artifactName` in desktop.config.mjs
-  OUT_DIR: dist-desktop # TODO: `outDir` in desktop.config.mjs
+  APP_NAME: Acme Demo # TODO: `name` in terrarium.config.mjs
+  ARTIFACT: Acme-Demo # TODO: `artifactName` in terrarium.config.mjs
+  OUT_DIR: dist-desktop # TODO: `outDir` in terrarium.config.mjs
   # TODO: path to web-terrarium's bin/web-terrarium.mjs in your repo. The package job runs it before
   # anything is installed, so it can't come from node_modules there.
-  NEXT_DESKTOP: packages/web-terrarium/bin/web-terrarium.mjs
+  WEB_TERRARIUM: packages/web-terrarium/bin/web-terrarium.mjs
 
 jobs:
   stage:
@@ -31,7 +31,7 @@ jobs:
           node-version: '22'
           cache: 'npm'
       - run: npm ci
-      - run: node "$NEXT_DESKTOP" stage
+      - run: node "$WEB_TERRARIUM" stage
       # A tarball keeps file modes and symlinks, which upload-artifact drops.
       - run: tar -czf desktop-stage.tgz "$OUT_DIR"
       - uses: actions/upload-artifact@v4
@@ -65,13 +65,13 @@ jobs:
           name: desktop-stage
       - run: tar -xzf desktop-stage.tgz && rm desktop-stage.tgz
       - name: Install the packaging tools from public npm
-        run: node "$NEXT_DESKTOP" install-tools
+        run: node "$WEB_TERRARIUM" install-tools
       - name: Package the app
-        run: node "$NEXT_DESKTOP" package
+        run: node "$WEB_TERRARIUM" package
         env:
           # The Mac app is ad-hoc signed (no certificate); electron-builder skips that on PRs otherwise.
           CSC_FOR_PULL_REQUEST: 'true'
-      # TODO: add a smoke test. The app logs "[next-desktop] app ready at <url>" to servers.log in
+      # TODO: add a smoke test. The app logs "[web-terrarium] app ready at <url>" to servers.log in
       # %APPDATA%\$APP_NAME (Windows) or ~/Library/Application Support/$APP_NAME (Mac).
       # Write one for each system: launch the app, check the page, close it, check the servers stopped.
       - uses: actions/upload-artifact@v4

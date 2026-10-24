@@ -1,4 +1,4 @@
-// The file work behind `next-desktop stage`, `package`, `start` and `install-tools`.
+// The file work behind `web-terrarium stage`, `package`, `start` and `install-tools`.
 /* eslint-disable no-console -- command-line tool */
 import { execFileSync, spawn } from 'node:child_process';
 import fs from 'node:fs';
@@ -6,12 +6,18 @@ import { createRequire } from 'node:module';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-// eslint-disable-next-line import-x/extensions
 import { runtimeConfig, stagePaths } from './config.mjs';
-// eslint-disable-next-line import-x/extensions
 import { builderConfig } from './packageConfig.mjs';
-// eslint-disable-next-line import-x/extensions
-import { electronPackageJson, esbuildOptions, nextBuildEnv, sharpSwap, toolsLockfile } from './stage.mjs';
+import {
+  electronPackageJson,
+  esbuildOptions,
+  nextBuildEnv,
+  sharpSwap,
+  findIcon,
+  stagedIconName,
+  standaloneAppDir,
+  toolsLockfile,
+} from './stage.mjs';
 
 const RUNTIME_DIR = path.join(import.meta.dirname, 'runtime');
 const RUNTIME_FILES = ['main.mjs', 'servers.mjs', 'window.mjs'];
@@ -21,7 +27,7 @@ const step = (text) => console.log(`\n> ${text}`);
 const copy = (from, to) => fs.cpSync(from, to, { recursive: true });
 const writeJson = (file, value) => fs.writeFileSync(file, `${JSON.stringify(value, null, 2)}\n`);
 
-// Packages come from the project, not from next-desktop's own folder.
+// Packages come from the project, not from web-terrarium's own folder.
 const projectRequire = (config) => createRequire(path.join(config.root, 'package.json'));
 const importFromProject = (config, name) =>
   import(pathToFileURL(projectRequire(config).resolve(name)).href);
@@ -35,24 +41,44 @@ const buildNext = (config) => {
   });
 };
 
+// Every server.js under `dir`, relative and with / separators. Skips node_modules, which only
+// holds dependencies and is large.
+const findServerFiles = (dir, prefix = '') =>
+  fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+    const relative = prefix ? `${prefix}/${entry.name}` : entry.name;
+    if (entry.isDirectory()) {
+      return entry.name === 'node_modules' ? [] : findServerFiles(path.join(dir, entry.name), relative);
+    }
+    return entry.name === 'server.js' ? [relative] : [];
+  });
+
+// Returns the app server's folder inside web/ ('' for web/ itself).
 const stageWeb = (config, paths) => {
   step('Staging the Next.js server');
-  const { distDir } = config.next;
+  const { distDir } = config.app;
   const built = path.join(config.root, distDir);
-  if (!fs.existsSync(path.join(built, 'standalone', 'server.js'))) {
+  const standalone = path.join(built, 'standalone');
+  const appDir = fs.existsSync(standalone) ? standaloneAppDir(findServerFiles(standalone)) : undefined;
+  if (appDir === undefined) {
     throw new Error(
       `No standalone server in ${built}. next.config.js needs output: 'standalone' and ` +
-        'distDir from NEXT_DESKTOP_DIST_DIR (see the web-terrarium README).',
+        'distDir from WEB_TERRARIUM_DIST_DIR (see the web-terrarium README).',
     );
   }
-  copy(path.join(built, 'standalone'), paths.web);
-  copy(path.join(built, 'static'), path.join(paths.web, distDir, 'static'));
+  copy(standalone, paths.web);
+  // Next leaves static/ and public/ out of standalone; they go beside the app's server.js.
+  const appWeb = path.join(paths.web, appDir);
+  copy(path.join(built, 'static'), path.join(appWeb, distDir, 'static'));
   const publicDir = path.join(config.root, 'public');
-  if (fs.existsSync(publicDir)) copy(publicDir, path.join(paths.web, 'public'));
+  if (fs.existsSync(publicDir)) copy(publicDir, path.join(appWeb, 'public'));
   // Never ship local env files (they can hold real endpoints or keys).
-  fs.readdirSync(paths.web)
-    .filter((name) => name.startsWith('.env'))
-    .forEach((name) => fs.rmSync(path.join(paths.web, name)));
+  [...new Set([paths.web, appWeb])].forEach((dir) =>
+    fs
+      .readdirSync(dir)
+      .filter((name) => name.startsWith('.env'))
+      .forEach((name) => fs.rmSync(path.join(dir, name))),
+  );
+  return appDir;
 };
 
 const stageServers = async (config, paths) => {
@@ -70,23 +96,29 @@ const stageServers = async (config, paths) => {
   }
 };
 
-const stageElectron = (config, paths) => {
+const stageElectron = (config, paths, { appDir }) => {
   step('Staging the Electron app');
   fs.mkdirSync(paths.stage, { recursive: true });
   RUNTIME_FILES.forEach((file) =>
     fs.copyFileSync(path.join(RUNTIME_DIR, file), path.join(paths.stage, file)),
   );
+  const iconFile = findIcon(config, fs.existsSync);
+  const icon = iconFile && stagedIconName(iconFile);
+  if (iconFile) {
+    fs.copyFileSync(iconFile, path.join(paths.stage, icon));
+    console.log(`Icon: ${path.relative(config.root, iconFile)}`);
+  }
   writeJson(path.join(paths.stage, 'package.json'), electronPackageJson(config));
-  writeJson(path.join(paths.stage, 'app.json'), runtimeConfig(config));
+  writeJson(path.join(paths.stage, 'app.json'), runtimeConfig(config, { appDir, icon }));
 };
 
 export const stageApp = async (config) => {
   const paths = stagePaths(config);
   fs.rmSync(config.outDir, { recursive: true, force: true });
   buildNext(config);
-  stageWeb(config, paths);
+  const appDir = stageWeb(config, paths);
   await stageServers(config, paths);
-  stageElectron(config, paths);
+  stageElectron(config, paths, { appDir });
 };
 
 const requireStage = (paths) => {
@@ -101,12 +133,15 @@ export const packageApp = async (config, target) => {
   step(`Packaging the ${target.label} app`);
   fs.rmSync(paths.packaged, { recursive: true, force: true });
   const { Arch, build, Platform } = await importFromProject(config, 'electron-builder');
+  // From the stage, which may have been built on another machine.
+  const { icon } = readJson(path.join(paths.stage, 'app.json'));
   await build({
     targets: Platform[target.platform].createTarget('zip', Arch[target.arch]),
     projectDir: paths.stage,
     config: builderConfig({
       config,
       paths,
+      icon: icon && path.join(paths.stage, icon),
       electronVersion: projectRequire(config)('electron/package.json').version,
       copy,
     }),

@@ -1,12 +1,54 @@
 // Pure helpers for staging and packaging. build.mjs and cli.mjs do the file work.
+import path from 'node:path';
+
+const BUNDLE_SHIMS = path.join(import.meta.dirname, 'bundleShims.mjs');
 
 export const nextBuildEnv = (config, baseEnv) => ({
   ...baseEnv,
-  ...config.next.buildEnv,
+  ...config.app.buildEnv,
   // next.config.js reads this to build standalone into its own folder (see ../README.md).
-  NEXT_DESKTOP_DIST_DIR: config.next.distDir,
+  // NEXT_DESKTOP_DIST_DIR is the name from before the rename, for configs that still read it.
+  WEB_TERRARIUM_DIST_DIR: config.app.distDir,
+  NEXT_DESKTOP_DIST_DIR: config.app.distDir,
   NEXT_TELEMETRY_DISABLED: '1',
 });
+
+// Next writes the app's server.js to standalone/<the project's path from its tracing root>/. That's
+// standalone/ itself for most projects, but a folder deeper in a monorepo, or when Next finds a
+// lockfile in a parent folder and traces from there. Given every server.js under standalone/
+// (relative, with / separators), returns the app's folder: the shallowest one outside
+// node_modules, or '' for standalone/ itself.
+export const standaloneAppDir = (serverFiles) => {
+  const dirs = serverFiles
+    .filter((file) => !file.split('/').includes('node_modules'))
+    .map((file) => path.posix.dirname(file))
+    .map((dir) => (dir === '.' ? '' : dir))
+    .sort((a, b) => a.split('/').length - b.split('/').length || a.length - b.length);
+  return dirs[0];
+};
+
+// Where a Next.js app keeps its icon, best first: Next's app icon, then the favicon.
+export const ICON_CANDIDATES = [
+  'src/app/icon.png',
+  'app/icon.png',
+  'public/icon.png',
+  'src/app/favicon.ico',
+  'app/favicon.ico',
+  'public/favicon.ico',
+];
+
+// The app's icon: `config.icon` if set, else the first of ICON_CANDIDATES in the project, else
+// undefined (Electron's own icon).
+export const findIcon = ({ root, icon }, exists) => {
+  if (icon) {
+    if (!exists(icon)) throw new Error(`The icon ${icon} doesn't exist.`);
+    return icon;
+  }
+  return ICON_CANDIDATES.map((file) => path.join(root, file)).find((file) => exists(file));
+};
+
+// The staged icon's file name, next to main.mjs.
+export const stagedIconName = (icon) => `icon${path.extname(icon).toLowerCase()}`;
 
 export const electronPackageJson = (config) => ({
   name: config.artifactName.toLowerCase(),
@@ -26,10 +68,14 @@ export const esbuildOptions = (entry, outfile) => ({
   format: 'esm',
   target: 'node22',
   logLevel: 'warning',
-  // Some bundled dependencies are CommonJS and call require().
+  // Bundled CommonJS dependencies call require() and read __dirname and __filename, which ES
+  // modules don't have. require goes on globalThis because esbuild's own require helper looks
+  // for it there, and a global can't clash with a server's own `const require`. The other two
+  // are injected only where nothing else declares them (see bundleShims.mjs).
   banner: {
-    js: "import { createRequire as __createRequire } from 'node:module'; const require = __createRequire(import.meta.url);",
+    js: "import { createRequire as __webTerrariumCreateRequire } from 'node:module'; globalThis.require ??= __webTerrariumCreateRequire(import.meta.url);",
   },
+  inject: [BUNDLE_SHIMS],
 });
 
 // sharp keeps its native binaries in @img/sharp-<os>-<arch> and @img/sharp-libvips-<os>-<arch>.
@@ -41,7 +87,7 @@ export const sharpSwap = ({ staged, installed }) => ({
   copy: installed.filter(isSharpBinary),
 });
 
-const TOOLS = 'next-desktop-tools';
+const TOOLS = 'web-terrarium-tools';
 
 // Where Node would find `name` from the package at `from`: its own node_modules, then each
 // parent's, then the top level.

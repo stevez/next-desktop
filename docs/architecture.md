@@ -1,10 +1,10 @@
-# next-desktop: architecture and implementation
+# web-terrarium: architecture and implementation
 
-This document explains how next-desktop turns a Next.js app into a Windows or Mac desktop app: its parts, how data moves between them, and why each part works the way it does. For setup and options, see the [README](../README.md).
+This document explains how web-terrarium turns a Next.js app into a Windows or Mac desktop app: its parts, how data moves between them, and why each part works the way it does. For setup and options, see the [README](../README.md).
 
 ## 1. The idea
 
-A Next.js app needs a Node server, but a desktop user has no Node. Electron ships its own Node and Chromium, so next-desktop uses Electron for three things:
+A Next.js app needs a Node server, but a desktop user has no Node. Electron ships its own Node and Chromium, so web-terrarium uses Electron for three things:
 
 - **Process launcher.** It runs the Next.js standalone server, plus any extra servers such as a mock backend, on Electron's own Node (`ELECTRON_RUN_AS_NODE=1`).
 - **Browser.** One sandboxed window shows the app from `http://127.0.0.1:<port>`.
@@ -32,23 +32,25 @@ flowchart LR
 | | Build time | Run time |
 | --- | --- | --- |
 | Runs on | developer machine or CI, with the project's `node_modules` | the user's machine, inside the packaged app |
-| Entry | `bin/next-desktop.mjs` → `src/cli.mjs` | `src/runtime/main.mjs` (Electron main) |
+| Entry | `bin/web-terrarium.mjs` → `src/cli.mjs` | `src/runtime/main.mjs` (Electron main) |
 | Can import | the project's `next`, `esbuild`, `electron-builder`, `electron` | Node built-ins and `electron` only |
-| Config source | `desktop.config.mjs` (code) | `app.json` (data) |
+| Config source | `terrarium.config.mjs` (code) | `app.json` (data) |
 
 The run-time files are **copied** into the app as they are. So they import only each other (`main.mjs` → `servers.mjs`, `window.mjs`) and Node built-ins. Everything project-specific reaches them as data in `app.json`. This rule keeps the runtime generic and means the packaged app never runs project config code.
 
 ## 3. Module map
 
 ```text
-packages/next-desktop/
-  bin/next-desktop.mjs        CLI entry
+web-terrarium/
+  bin/web-terrarium.mjs       CLI entry
   src/
     cli.mjs                   load config file, dispatch command            (I/O)
     config.mjs                resolveConfig, runtimeConfig, stagePaths      (pure)
-    packageConfig.mjs         parseCli, hostTarget, builderConfig           (pure)
+    packageConfig.mjs         parseCli, usage, configFile, hostTarget,
+                              builderConfig                                 (pure)
     stage.mjs                 nextBuildEnv, electronPackageJson,
                               esbuildOptions, sharpSwap, toolsLockfile      (pure)
+    bundleShims.mjs           __dirname, __filename for bundled servers     (injected by esbuild)
     build.mjs                 stageApp, packageApp, startStaged,
                               installTools                                  (I/O)
     runtime/
@@ -70,7 +72,7 @@ The code has a **pure core and a thin shell**:
 
 ```mermaid
 flowchart LR
-  A["desktop.config.mjs<br/>(raw, code)"] -- "resolveConfig()" --> B["resolved config<br/>(defaults, absolute paths,<br/>validated)"]
+  A["terrarium.config.mjs<br/>(raw, code)"] -- "resolveConfig()" --> B["resolved config<br/>(defaults, absolute paths,<br/>validated)"]
   B -- "nextBuildEnv()" --> C["env for next build"]
   B -- "esbuildOptions()" --> D["server bundles"]
   B -- "builderConfig()" --> E["electron-builder config"]
@@ -80,18 +82,21 @@ flowchart LR
 
 `resolveConfig(raw, { root, rootPackage })` does three things:
 
-- **Fills defaults.** `artifactName` (from `name`), `version` and `author` (from `package.json`), `outDir` (`dist-desktop`), `next.distDir` (`.next-desktop`), `readyPath` (`/`), a 1280 x 800 window, the loading text and the error hint.
+- **Fills defaults.** `artifactName` (from `name`), `version` and `author` (from `package.json`), `outDir` (`dist-desktop`), `app.type` (`next`), `app.distDir` (`.next-terrarium`), `readyPath` (`/`), `startTimeoutMs` (60000), a 1280 x 800 window, the loading text and the error hint. The older `next: { ... }` is read as `app: { type: 'next', ... }`.
 - **Resolves paths** against the project root: `outDir` and each server's `entry`.
 - **Validates**, so mistakes fail fast before the slow Next build:
   - `name` and `appId` are required;
-  - `next.distDir` must not be `.next`, so a desktop build can never overwrite, or be mistaken for, the deployable build;
+  - `app.type` must be a supported type (only `next` today), and `app` and `next` can't both be set;
+  - `app.distDir` must not be `.next`, so a desktop build can never overwrite, or be mistaken for, the deployable build;
+  - `outDir` must not be the project root or a folder above it, because `stage` deletes it first;
+  - `startTimeoutMs` must be a positive whole number;
   - server names must match `/^[a-z][\w-]*$/i`, be unique, and not be `app` (that name is reserved for the Next server).
 
-`runtimeConfig(config)` keeps only what the running app needs: the name, window settings, error hint, and for each server its `name`, `label`, folder, entry, `env` and `readyPath`. The Next server is described the same way, as the `app` entry (`dir: 'web'`, `entry: 'server.js'`). Build-only settings such as `next.buildEnv` never reach the user's machine.
+`runtimeConfig(config)` keeps only what the running app needs: the name, window settings, error hint, `startTimeoutMs`, and for each server its `name`, `label`, folder, entry, `env` and `readyPath`. The Next server is described the same way, as the `app` entry (`dir: 'web'`, `entry: 'server.js'`). Build-only settings such as `app.buildEnv` never reach the user's machine.
 
 ## 5. Build pipeline
 
-`next-desktop build` runs `stage`, then `package`. They're separate commands so the two steps can run on different machines (see section 9).
+`web-terrarium build` runs `stage`, then `package`. They're separate commands so the two steps can run on different machines (see section 9).
 
 ```mermaid
 sequenceDiagram
@@ -100,11 +105,11 @@ sequenceDiagram
   participant Next as next build
   participant ES as esbuild
   participant EB as electron-builder
-  CLI->>CLI: parseCli, load desktop.config.mjs, resolveConfig
+  CLI->>CLI: parseCli, load terrarium.config.mjs, resolveConfig
   CLI->>CLI: hostTarget(platform, arch)  (fails early on Linux)
   CLI->>B: stageApp(config)
   B->>B: delete outDir
-  B->>Next: next build (env = buildEnv + NEXT_DESKTOP_DIST_DIR)
+  B->>Next: next build (env = buildEnv + WEB_TERRARIUM_DIST_DIR)
   Next-->>B: <distDir>/standalone, <distDir>/static
   B->>B: stageWeb: copy standalone, static, public → resources/web; delete .env*
   loop each extra server
@@ -121,29 +126,38 @@ sequenceDiagram
 
 ### 5.1 Next.js build
 
-`nextBuildEnv` sets `NEXT_DESKTOP_DIST_DIR`, and the project's `next.config.js` uses it as `distDir`. With `output: 'standalone'`, Next copies only the files the server needs into `<distDir>/standalone`, including a trimmed `node_modules`. `NEXT_PUBLIC_*` values in `next.buildEnv` are written into the client bundle at this step, so each build has fixed values.
+`nextBuildEnv` sets `WEB_TERRARIUM_DIST_DIR` (and the pre-rename `NEXT_DESKTOP_DIST_DIR`, for configs that still read it), and the project's `next.config.js` uses it as `distDir`. With `output: 'standalone'`, Next copies only the files the server needs into `<distDir>/standalone`, including a trimmed `node_modules`. `NEXT_PUBLIC_*` values in `next.buildEnv` are written into the client bundle at this step, so each build has fixed values.
 
-`next` is loaded from the project (`createRequire(<root>/package.json)`), not from next-desktop's folder, so the build always uses the project's own Next version. `esbuild`, `electron` and `electron-builder` are loaded the same way.
+`next` is loaded from the project (`createRequire(<root>/package.json)`), not from web-terrarium's folder, so the build always uses the project's own Next version. `esbuild`, `electron` and `electron-builder` are loaded the same way.
 
 ### 5.2 Staging the web server
 
-`stageWeb` copies three things:
+First it finds the app's `server.js`. Next writes it to `standalone/<the project's path from its tracing root>/`. For most projects that's `standalone/` itself. In a monorepo, or when Next finds a lockfile in a parent folder and traces from there, it's deeper, for example `standalone/development/my-app/server.js`, with the shared `node_modules` at the top of `standalone/`. `standaloneAppDir` picks the shallowest `server.js` outside `node_modules`; call its folder `<appDir>`.
+
+Then `stageWeb` copies three things:
 
 - `standalone/` to `resources/web`;
-- `static/` to `web/<distDir>/static`;
-- `public/` to `web/public`.
+- `static/` to `web/<appDir>/<distDir>/static`;
+- `public/` to `web/<appDir>/public`.
 
-Next's standalone output leaves out `static/` and `public/` by design, which is why they're copied separately. `stageWeb` also deletes every `.env*` file from `web`, because they can hold real endpoints or keys and must never ship. It stops with an error if the build produced no standalone `server.js`.
+Next's standalone output leaves out `static/` and `public/` by design, which is why they're copied separately. `stageWeb` also deletes every `.env*` file from `web` and `web/<appDir>`, because they can hold real endpoints or keys and must never ship. It stops with an error if the build produced no standalone `server.js`. `<appDir>` goes into `app.json`, so the runtime starts `web/<appDir>/server.js`.
+
+`stageElectron` also copies the app's icon next to `main.mjs` as `icon.<ext>` (see `findIcon`: the `icon` option, else Next's `app/icon.png`, else `favicon.ico`). `package` reads its name from `app.json` and gives it to electron-builder for each system that can use that format.
 
 ### 5.3 Bundling extra servers
 
-Each server's `entry` is bundled into one ESM file with esbuild (`platform: node`, `target: node22`). A `createRequire` banner gives the bundle a working `require` for CommonJS dependencies. The bundle needs no `node_modules`, so each server folder stays small.
+Each server's `entry` is bundled into one ESM file with esbuild (`platform: node`, `target: node22`). Bundled CommonJS dependencies still need `require`, `__dirname` and `__filename`, which ES modules don't have:
+
+- A banner sets `globalThis.require` from `createRequire(import.meta.url)`. It goes on the global because esbuild's own `require` helper looks for it there, and a global can't clash with a server's own `const require = createRequire(...)`.
+- `src/bundleShims.mjs` is injected (esbuild `inject`) and exports `__dirname` and `__filename`. esbuild only uses them where nothing else declares those names, so a server's own `const __dirname = ...` is kept.
+
+The bundle needs no `node_modules`, so each server folder stays small.
 
 Data that a server reads at run time, such as fixtures, is listed in its `copy` setting and copied beside the bundle. So the server must find its data relative to its own file (`import.meta.url`), not the working directory.
 
 ### 5.4 The Electron stage
 
-`stage/` is a minimal Electron app: the three runtime files, `app.json`, and a `package.json` with `main: 'main.mjs'` and no dependencies. `next-desktop start` runs Electron on this folder directly; in that mode, `main.mjs` finds the servers in `../resources`.
+`stage/` is a minimal Electron app: the three runtime files, `app.json`, and a `package.json` with `main: 'main.mjs'` and no dependencies. `web-terrarium start` runs Electron on this folder directly; in that mode, `main.mjs` finds the servers in `../resources`.
 
 ### 5.5 Packaging
 
@@ -190,7 +204,7 @@ sequenceDiagram
   loop each extra server, in config order
     S->>X: spawn execPath server.mjs (ELECTRON_RUN_AS_NODE=1, env filled)
     S->>X: poll readyPath until 2xx (races against exit or error)
-    S->>E: log "[next-desktop] <name> ready at <url>"
+    S->>E: log "[web-terrarium] <name> ready at <url>"
   end
   S->>N: spawn execPath web/server.js (PORT, HOSTNAME=127.0.0.1, NODE_ENV=production)
   S->>N: poll readyPath until 2xx
@@ -209,7 +223,7 @@ sequenceDiagram
   - `{port:<name>}` with another server's port (`app` is the Next server).
 
   All ports are picked before any server starts, so any server can refer to any other. An unknown name throws, so a typo fails at start-up with a clear message.
-- **Readiness.** `waitForHttp` polls every 250 ms, with a 1 s timeout per request and 60 s overall. Any 2xx answer counts as ready.
+- **Readiness.** `waitUntilReady` picks the check from the server's `ready` setting. With `http` (the default, and always for the app server), `waitForHttp` polls `readyPath` and any 2xx answer counts. With `tcp`, `waitForTcp` waits until the port takes a connection, for servers that don't speak HTTP, such as a database. Both poll every 250 ms, with a 1 s timeout per try and `startTimeoutMs` overall (60 s by default). A tcp server should listen only once it can serve, so "takes a connection" means "ready".
 - **Failure.** The first child `error` or `exit` rejects a shared `startupFailed` promise, and every readiness wait races against it. A crashed server therefore fails start-up at once instead of after 60 s. On any failure, every started child is killed and the error goes back to `main.mjs`.
 - **Cancelling.** `main.mjs` passes an `AbortSignal`. Aborting it kills the children already running at once (synchronously, because the app may be quitting) and stops any further server from starting.
 - **Crash after start-up.** If a server exits later, the others are stopped and `onExit(error)` is called. Exits caused by `stop()` itself aren't reported.
@@ -246,7 +260,7 @@ All output goes to `<userData>/servers.log`, which is emptied on each launch:
 - Windows: `%APPDATA%\<name>`;
 - Mac: `~/Library/Application Support/<name>`.
 
-Each line starts with its source: the server name (for example `[mock]` or `[app]`), or `[next-desktop]` for the library's own messages. `[next-desktop] <name> ready at <url>` is a stable line that CI smoke tests can read to find each server's URL.
+Each line starts with its source: the server name (for example `[mock]` or `[app]`), or `[web-terrarium]` for the library's own messages. `[web-terrarium] <name> ready at <url>` is a stable line that CI smoke tests can read to find each server's URL.
 
 ## 8. Platform differences
 
@@ -269,7 +283,7 @@ Next's standalone output includes sharp for image optimization. Its native binar
 If you stage and package on the same system, this just works. If the stage was built on another system, `install-tools` fixes it:
 
 1. `toolsLockfile` cuts a small lockfile from the project's `package-lock.json`: `electron`, `electron-builder` and `sharp` (which must match the staged `web/node_modules/sharp` version), plus everything they depend on, found the way Node resolves modules. It keeps each `integrity` hash and drops `resolved`, which may point to the private registry. It refuses a package with no hash, so nothing unchecked gets in.
-2. `npm ci` installs that lockfile from the public registry (or `NEXT_DESKTOP_REGISTRY`) into a temporary folder, which then becomes `./node_modules`. npm checks every tarball against its hash, so the runner gets exactly the audited packages. The command refuses to run if `node_modules` already exists, so it can't damage a developer's checkout.
+2. `npm ci` installs that lockfile from the public registry (or `WEB_TERRARIUM_REGISTRY`) into a temporary folder, which then becomes `./node_modules`. npm checks every tarball against its hash, so the runner gets exactly the audited packages. The command refuses to run if `node_modules` already exists, so it can't damage a developer's checkout.
 3. `sharpSwap` removes every staged `@img/sharp-*` folder and copies in the ones npm just installed for this system.
 
 ## 9. CI design
@@ -278,7 +292,7 @@ Private packages, such as an internal component library, often live on a registr
 
 ```mermaid
 flowchart LR
-  A["stage job<br/>runner with registry access<br/>npm ci, next-desktop stage"] -- "tarball artifact<br/>(keeps file modes and symlinks)" --> B["package job (windows-latest)<br/>install-tools → package"]
+  A["stage job<br/>runner with registry access<br/>npm ci, web-terrarium stage"] -- "tarball artifact<br/>(keeps file modes and symlinks)" --> B["package job (windows-latest)<br/>install-tools → package"]
   A -- "tarball artifact" --> C["package job (macos-latest)<br/>install-tools → package"]
   B --> D["&lt;app&gt;-win.zip"]
   C --> E["&lt;app&gt;-mac.zip"]
@@ -294,7 +308,7 @@ flowchart LR
 | --- | --- |
 | `config`, `packageConfig`, `stage`, `window` | Unit tests: defaults, validation errors, builder settings, sharp swap, tool versions, URL and permission rules. |
 | `servers.mjs` | Unit tests with fake spawn, ports and readiness: start order, distinct ports, env, placeholders, early exit, timeouts, stopping on failure, output forwarding. |
-| `cli`, `build`, `main` | Excluded from coverage. Checked by running `next-desktop build` and launching the app, locally and in CI on both systems. |
+| `cli`, `build`, `main` | Excluded from coverage. Checked by running `web-terrarium build` and launching the app, locally and in CI on both systems. |
 
 Every file that's included in coverage is at 100%.
 
@@ -302,14 +316,14 @@ Every file that's included in coverage is at 100%.
 
 | Need | Where to change |
 | --- | --- |
-| Another local server (a second mock, a small API) | Add an entry to `servers` in `desktop.config.mjs`. Refer to its port from other servers with `{port:<name>}`. |
+| Another local server (a second mock, a small API) | Add an entry to `servers` in `terrarium.config.mjs`. Refer to its port from other servers with `{port:<name>}`. |
 | A better readiness check | Point `readyPath` at an endpoint that returns 2xx only when the server is really ready. |
 | Code signing (Windows certificate, Apple Developer ID and notarization) | In `builderConfig`, replace the ad-hoc `mac` settings, set `hardenedRuntime: true` with entitlements that allow the native modules, and turn on `notarize`. Add signing to `win`. Supply secrets through electron-builder's `CSC_*` env variables, never in the config. |
 | An installer instead of a zip | Change the target in `packageApp` (`createTarget('zip', …)`) to `nsis` or `dmg`. First check that endpoint security allows it. |
 | Intel or universal Mac builds | Pass a different `arch` from `hostTarget`, or use a `universal` target. The staged sharp binaries must match. |
 | Auto-update | Not supported. It would need signing, a publish target and `electron-updater` in the runtime. |
 | More window options (menu, icon) | Extend `config.window`, pass it through `runtimeConfig`, and use it in `createWindow`. Keep `webPreferences` locked down. |
-| Its own repository | Move `packages/next-desktop` as it is; it has no imports from the host project. Publish it, then point the host's scripts at the installed `next-desktop` binary. |
+| Another app type (static, Node server) | Add it to `APP_TYPES` in `config.mjs` and give it its own build and stage steps in `build.mjs`. See the [roadmap](https://github.com/stevez/web-terrarium/issues/6). |
 
 When you add a setting, keep the two halves apart: build-time settings stay in the resolved config, and only what `main.mjs` needs goes through `runtimeConfig` into `app.json`.
 
@@ -328,7 +342,7 @@ When you add a setting, keep the two halves apart: build-time settings stay in t
 | Run the unchanged Next standalone server | Static export, custom Electron protocol handlers | Keeps API routes, middleware and server components, and matches the deployed app. |
 | Spawn servers with `ELECTRON_RUN_AS_NODE` | `utilityProcess`, loading servers inside the main process | Plain child processes with their own env and working folder; easy to kill; one log prefix per server; no second Node to ship. |
 | Free ports on `127.0.0.1` | Fixed ports | Never clashes with other programs. |
-| Runtime config as `app.json` data | Bundling `desktop.config.mjs` into the app | The runtime stays generic and never runs project code, and build-only env stays out of the zip. |
+| Runtime config as `app.json` data | Bundling `terrarium.config.mjs` into the app | The runtime stays generic and never runs project code, and build-only env stays out of the zip. |
 | One package for Windows and Mac | One per system | The runtime is identical; only a few builder settings differ. |
 | Zip, unsigned or ad-hoc signed | NSIS, portable, DMG, signed | Needs no certificates, for team-internal use. Signing can be added later (section 11). |
 | esbuild for extra servers | Copying their `node_modules` | One small file per server, with no dependency tree to trace. |

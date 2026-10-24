@@ -6,15 +6,12 @@ import path from 'node:path';
 
 import { app, BrowserWindow, dialog, session, shell } from 'electron';
 
-// Node ESM needs the extension at runtime.
-// eslint-disable-next-line import-x/extensions
-import { startServers } from './servers.mjs';
-// eslint-disable-next-line import-x/extensions
+import { LOG_NAME, startServers } from './servers.mjs';
 import { isAllowedPermission, isAppUrl, loadingPage, opensExternally } from './window.mjs';
 
 const config = JSON.parse(fs.readFileSync(path.join(import.meta.dirname, 'app.json'), 'utf8'));
 
-// Packaged: the servers sit in the app's resources folder. Unpackaged (next-desktop start): next
+// Packaged: the servers sit in the app's resources folder. Unpackaged (web-terrarium start): next
 // to the staged app.
 const resourcesDir = app.isPackaged
   ? process.resourcesPath
@@ -37,9 +34,13 @@ const createWindow = () => {
     width: config.window.width,
     height: config.window.height,
     title: config.name,
+    // The packaged app already has the icon; this one shows in the taskbar under `start` too.
+    ...(config.icon && { icon: path.join(import.meta.dirname, config.icon) }),
     autoHideMenuBar: true,
     webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true },
   });
+  // Keep the app's name as the window title, not the page's <title>.
+  mainWindow.on('page-title-updated', (event) => event.preventDefault());
   const { webContents } = mainWindow;
   webContents.setWindowOpenHandler(({ url }) => {
     openExternally(url);
@@ -62,7 +63,7 @@ const start = async () => {
     callback(isAllowedPermission(permission)),
   );
   const fail = (title, err) => {
-    log('next-desktop', `${err.stack}\n`);
+    log(LOG_NAME, `${err.stack}\n`);
     dialog.showErrorBox(title, `${err.message}\n\n${config.errorHint} Details: ${logFile}`);
     app.quit();
   };

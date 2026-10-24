@@ -4,7 +4,16 @@ import path from 'node:path';
 
 import { describe, expect, it, vi } from 'vitest';
 
-import { fillTemplate, freePort, serverEnv, startServers, waitForHttp } from '../servers';
+import {
+  fillTemplate,
+  freePort,
+  LOG_NAME,
+  serverEnv,
+  startServers,
+  waitForHttp,
+  waitForTcp,
+  waitUntilReady,
+} from '../servers';
 
 const fakeChild = () => {
   const child = new EventEmitter();
@@ -70,6 +79,71 @@ describe('waitForHttp', () => {
     await expect(
       waitForHttp('http://127.0.0.1:1/x', { fetchImpl, intervalMs: 1, timeoutMs: 5 }),
     ).rejects.toThrow('http://127.0.0.1:1/x did not start within 5 ms');
+  });
+});
+
+describe('waitForTcp', () => {
+  // A fake socket that emits `outcome` (connect, error or timeout) on the next tick.
+  const fakeConnect = (...outcomes) =>
+    vi.fn(() => {
+      const socket = new EventEmitter();
+      socket.setTimeout = vi.fn();
+      socket.destroy = vi.fn();
+      const outcome = outcomes.shift();
+      setImmediate(() => socket.emit(outcome, new Error(outcome)));
+      return socket;
+    });
+
+  it('resolves once the port takes a connection, retrying while it is refused or slow', async () => {
+    const connectImpl = fakeConnect('error', 'timeout', 'connect');
+
+    await waitForTcp('tcp://127.0.0.1:5432', { connectImpl, intervalMs: 1 });
+
+    expect(connectImpl).toHaveBeenCalledTimes(3);
+    expect(connectImpl).toHaveBeenCalledWith({ host: '127.0.0.1', port: 5432 });
+  });
+
+  it('gives up after the timeout', async () => {
+    const connectImpl = fakeConnect(...Array(100).fill('error'));
+
+    await expect(
+      waitForTcp('tcp://127.0.0.1:5432', { connectImpl, intervalMs: 1, timeoutMs: 5 }),
+    ).rejects.toThrow('tcp://127.0.0.1:5432 did not start within 5 ms');
+  });
+
+  it('connects to a real listening port', async () => {
+    const server = net.createServer((socket) => socket.end());
+    await new Promise((resolve) => {
+      server.listen(0, '127.0.0.1', resolve);
+    });
+
+    await waitForTcp(`tcp://127.0.0.1:${server.address().port}`, { intervalMs: 1, timeoutMs: 1000 });
+
+    await new Promise((resolve) => {
+      server.close(resolve);
+    });
+  });
+});
+
+describe('waitUntilReady', () => {
+  it('waits for a TCP connection for tcp:// URLs and for HTTP otherwise', async () => {
+    const connectImpl = vi.fn(() => {
+      const socket = new EventEmitter();
+      socket.setTimeout = vi.fn();
+      socket.destroy = vi.fn();
+      setImmediate(() => socket.emit('connect'));
+      return socket;
+    });
+    const fetchImpl = vi.fn().mockResolvedValue({ ok: true });
+    const options = { connectImpl, fetchImpl, intervalMs: 1 };
+
+    await waitUntilReady('tcp://127.0.0.1:5432', options);
+    expect(connectImpl).toHaveBeenCalledTimes(1);
+    expect(fetchImpl).not.toHaveBeenCalled();
+
+    await waitUntilReady('http://127.0.0.1:3000/health', options);
+    expect(fetchImpl).toHaveBeenCalledWith('http://127.0.0.1:3000/health', expect.anything());
+    expect(connectImpl).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -213,8 +287,32 @@ describe('startServers', () => {
         env: expect.objectContaining({ PORT: '4002', API_URL: 'http://127.0.0.1:4001' }),
       }),
     );
-    expect(waitImpl).toHaveBeenNthCalledWith(1, 'http://127.0.0.1:4001/ready');
-    expect(waitImpl).toHaveBeenNthCalledWith(2, 'http://127.0.0.1:4002/api/health');
+    // No startTimeoutMs in this app.json (one staged before it existed): waitForHttp's default.
+    const noTimeout = { timeoutMs: undefined };
+    expect(waitImpl).toHaveBeenNthCalledWith(1, 'http://127.0.0.1:4001/ready', noTimeout);
+    expect(waitImpl).toHaveBeenNthCalledWith(2, 'http://127.0.0.1:4002/api/health', noTimeout);
+  });
+
+  it('waits for a TCP connection to a server that does not speak HTTP', async () => {
+    const { waitImpl, onOutput, start } = setup();
+    const db = { ...config.servers[0], ready: 'tcp', readyPath: '/' };
+
+    await start({ ...config, servers: [db] });
+
+    expect(waitImpl).toHaveBeenNthCalledWith(1, 'tcp://127.0.0.1:4001', { timeoutMs: undefined });
+    expect(waitImpl).toHaveBeenNthCalledWith(2, 'http://127.0.0.1:4002/api/health', {
+      timeoutMs: undefined,
+    });
+    expect(onOutput).toHaveBeenCalledWith(LOG_NAME, 'mock ready at tcp://127.0.0.1:4001\n');
+  });
+
+  it('waits for each server as long as startTimeoutMs allows', async () => {
+    const { waitImpl, start } = setup();
+
+    await start({ ...config, startTimeoutMs: 120000 });
+
+    expect(waitImpl).toHaveBeenCalledTimes(2);
+    expect(waitImpl).toHaveBeenCalledWith(expect.any(String), { timeoutMs: 120000 });
   });
 
   it('starts just the Next app when there are no other servers', async () => {
@@ -231,8 +329,8 @@ describe('startServers', () => {
 
     await start();
 
-    expect(onOutput).toHaveBeenCalledWith('next-desktop', 'mock ready at http://127.0.0.1:4001\n');
-    expect(onOutput).toHaveBeenCalledWith('next-desktop', 'app ready at http://127.0.0.1:4002\n');
+    expect(onOutput).toHaveBeenCalledWith(LOG_NAME, 'mock ready at http://127.0.0.1:4001\n');
+    expect(onOutput).toHaveBeenCalledWith(LOG_NAME, 'app ready at http://127.0.0.1:4002\n');
   });
 
   it('asks for another port when a pick is already taken', async () => {
