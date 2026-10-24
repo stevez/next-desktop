@@ -1,10 +1,15 @@
 // Pure helpers for staging and packaging. build.mjs and cli.mjs do the file work.
+import path from 'node:path';
+
+const BUNDLE_SHIMS = path.join(import.meta.dirname, 'bundleShims.mjs');
 
 export const nextBuildEnv = (config, baseEnv) => ({
   ...baseEnv,
-  ...config.next.buildEnv,
+  ...config.app.buildEnv,
   // next.config.js reads this to build standalone into its own folder (see ../README.md).
-  NEXT_DESKTOP_DIST_DIR: config.next.distDir,
+  // NEXT_DESKTOP_DIST_DIR is the name from before the rename, for configs that still read it.
+  WEB_TERRARIUM_DIST_DIR: config.app.distDir,
+  NEXT_DESKTOP_DIST_DIR: config.app.distDir,
   NEXT_TELEMETRY_DISABLED: '1',
 });
 
@@ -26,10 +31,14 @@ export const esbuildOptions = (entry, outfile) => ({
   format: 'esm',
   target: 'node22',
   logLevel: 'warning',
-  // Some bundled dependencies are CommonJS and call require().
+  // Bundled CommonJS dependencies call require() and read __dirname and __filename, which ES
+  // modules don't have. require goes on globalThis because esbuild's own require helper looks
+  // for it there, and a global can't clash with a server's own `const require`. The other two
+  // are injected only where nothing else declares them (see bundleShims.mjs).
   banner: {
-    js: "import { createRequire as __createRequire } from 'node:module'; const require = __createRequire(import.meta.url);",
+    js: "import { createRequire as __webTerrariumCreateRequire } from 'node:module'; globalThis.require ??= __webTerrariumCreateRequire(import.meta.url);",
   },
+  inject: [BUNDLE_SHIMS],
 });
 
 // sharp keeps its native binaries in @img/sharp-<os>-<arch> and @img/sharp-libvips-<os>-<arch>.
@@ -41,7 +50,7 @@ export const sharpSwap = ({ staged, installed }) => ({
   copy: installed.filter(isSharpBinary),
 });
 
-const TOOLS = 'next-desktop-tools';
+const TOOLS = 'web-terrarium-tools';
 
 // Where Node would find `name` from the package at `from`: its own node_modules, then each
 // parent's, then the top level.

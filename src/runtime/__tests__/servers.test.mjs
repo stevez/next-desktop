@@ -4,7 +4,7 @@ import path from 'node:path';
 
 import { describe, expect, it, vi } from 'vitest';
 
-import { fillTemplate, freePort, serverEnv, startServers, waitForHttp } from '../servers';
+import { fillTemplate, freePort, LOG_NAME, serverEnv, startServers, waitForHttp } from '../servers';
 
 const fakeChild = () => {
   const child = new EventEmitter();
@@ -213,8 +213,19 @@ describe('startServers', () => {
         env: expect.objectContaining({ PORT: '4002', API_URL: 'http://127.0.0.1:4001' }),
       }),
     );
-    expect(waitImpl).toHaveBeenNthCalledWith(1, 'http://127.0.0.1:4001/ready');
-    expect(waitImpl).toHaveBeenNthCalledWith(2, 'http://127.0.0.1:4002/api/health');
+    // No startTimeoutMs in this app.json (one staged before it existed): waitForHttp's default.
+    const noTimeout = { timeoutMs: undefined };
+    expect(waitImpl).toHaveBeenNthCalledWith(1, 'http://127.0.0.1:4001/ready', noTimeout);
+    expect(waitImpl).toHaveBeenNthCalledWith(2, 'http://127.0.0.1:4002/api/health', noTimeout);
+  });
+
+  it('waits for each server as long as startTimeoutMs allows', async () => {
+    const { waitImpl, start } = setup();
+
+    await start({ ...config, startTimeoutMs: 120000 });
+
+    expect(waitImpl).toHaveBeenCalledTimes(2);
+    expect(waitImpl).toHaveBeenCalledWith(expect.any(String), { timeoutMs: 120000 });
   });
 
   it('starts just the Next app when there are no other servers', async () => {
@@ -231,8 +242,8 @@ describe('startServers', () => {
 
     await start();
 
-    expect(onOutput).toHaveBeenCalledWith('next-desktop', 'mock ready at http://127.0.0.1:4001\n');
-    expect(onOutput).toHaveBeenCalledWith('next-desktop', 'app ready at http://127.0.0.1:4002\n');
+    expect(onOutput).toHaveBeenCalledWith(LOG_NAME, 'mock ready at http://127.0.0.1:4001\n');
+    expect(onOutput).toHaveBeenCalledWith(LOG_NAME, 'app ready at http://127.0.0.1:4002\n');
   });
 
   it('asks for another port when a pick is already taken', async () => {

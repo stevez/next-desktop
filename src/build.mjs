@@ -1,4 +1,4 @@
-// The file work behind `next-desktop stage`, `package`, `start` and `install-tools`.
+// The file work behind `web-terrarium stage`, `package`, `start` and `install-tools`.
 /* eslint-disable no-console -- command-line tool */
 import { execFileSync, spawn } from 'node:child_process';
 import fs from 'node:fs';
@@ -6,11 +6,8 @@ import { createRequire } from 'node:module';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-// eslint-disable-next-line import-x/extensions
 import { runtimeConfig, stagePaths } from './config.mjs';
-// eslint-disable-next-line import-x/extensions
 import { builderConfig } from './packageConfig.mjs';
-// eslint-disable-next-line import-x/extensions
 import { electronPackageJson, esbuildOptions, nextBuildEnv, sharpSwap, toolsLockfile } from './stage.mjs';
 
 const RUNTIME_DIR = path.join(import.meta.dirname, 'runtime');
@@ -21,7 +18,7 @@ const step = (text) => console.log(`\n> ${text}`);
 const copy = (from, to) => fs.cpSync(from, to, { recursive: true });
 const writeJson = (file, value) => fs.writeFileSync(file, `${JSON.stringify(value, null, 2)}\n`);
 
-// Packages come from the project, not from next-desktop's own folder.
+// Packages come from the project, not from web-terrarium's own folder.
 const projectRequire = (config) => createRequire(path.join(config.root, 'package.json'));
 const importFromProject = (config, name) =>
   import(pathToFileURL(projectRequire(config).resolve(name)).href);
@@ -37,12 +34,12 @@ const buildNext = (config) => {
 
 const stageWeb = (config, paths) => {
   step('Staging the Next.js server');
-  const { distDir } = config.next;
+  const { distDir } = config.app;
   const built = path.join(config.root, distDir);
   if (!fs.existsSync(path.join(built, 'standalone', 'server.js'))) {
     throw new Error(
       `No standalone server in ${built}. next.config.js needs output: 'standalone' and ` +
-        'distDir from NEXT_DESKTOP_DIST_DIR (see the web-terrarium README).',
+        'distDir from WEB_TERRARIUM_DIST_DIR (see the web-terrarium README).',
     );
   }
   copy(path.join(built, 'standalone'), paths.web);

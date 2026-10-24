@@ -1,7 +1,15 @@
-// Reads a project's desktop.config.mjs and fills in the defaults. See ../README.md for the options.
+// Reads a project's terrarium.config.mjs and fills in the defaults. See ../README.md for the options.
 import path from 'node:path';
 
 const SERVER_NAME = /^[a-z][\w-]*$/i;
+export const APP_TYPES = ['next'];
+const DEFAULT_START_TIMEOUT_MS = 60000;
+
+// True when `dir` is `root` itself or a folder above it, so deleting `dir` would delete the project.
+const containsRoot = (dir, root) => {
+  const relative = path.relative(dir, root);
+  return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative));
+};
 
 const resolveServer = (server, root) => {
   const { name } = server;
@@ -21,13 +29,39 @@ const resolveServer = (server, root) => {
   };
 };
 
+// `app: { type: 'next', ... }`, or the older `next: { ... }`, which means the same.
+const resolveApp = (raw, root) => {
+  if (raw.app && raw.next) throw new Error('Use app or next in the config, not both.');
+  const app = raw.app ?? { type: 'next', ...raw.next };
+  if (!APP_TYPES.includes(app.type)) {
+    throw new Error(`app.type must be one of ${APP_TYPES.join(', ')}, got "${app.type}".`);
+  }
+  const distDir = app.distDir ?? '.next-terrarium';
+  // Compare resolved paths, so ./.next or .next/ can't sneak the desktop build into the normal one.
+  if (path.resolve(root, distDir) === path.resolve(root, '.next')) {
+    throw new Error('app.distDir must not be .next, so the desktop build never mixes with the normal one.');
+  }
+  return {
+    type: app.type,
+    distDir,
+    buildEnv: app.buildEnv ?? {},
+    env: app.env ?? {},
+    readyPath: app.readyPath ?? '/',
+  };
+};
+
 export const resolveConfig = (raw, { root, rootPackage }) => {
   if (!raw?.name) throw new Error('The desktop config needs a name (the app and window title).');
   if (!raw.appId) throw new Error('The desktop config needs an appId, like com.example.app.');
-  const distDir = raw.next?.distDir ?? '.next-desktop';
-  // Compare resolved paths, so ./.next or .next/ can't sneak the demo build into the normal one.
-  if (path.resolve(root, distDir) === path.resolve(root, '.next')) {
-    throw new Error('next.distDir must not be .next, so the desktop build never mixes with the normal one.');
+  const app = resolveApp(raw, root);
+  const outDir = path.resolve(root, raw.outDir ?? 'dist-desktop');
+  // stage deletes outDir first, so it must never hold the project.
+  if (containsRoot(outDir, root)) {
+    throw new Error(`outDir must be a folder inside the project, got "${raw.outDir}".`);
+  }
+  const startTimeoutMs = raw.startTimeoutMs ?? DEFAULT_START_TIMEOUT_MS;
+  if (!Number.isInteger(startTimeoutMs) || startTimeoutMs <= 0) {
+    throw new Error(`startTimeoutMs must be a whole number of milliseconds, got "${startTimeoutMs}".`);
   }
   const servers = (raw.servers ?? []).map((server) => resolveServer(server, root));
   const names = servers.map((server) => server.name);
@@ -42,25 +76,22 @@ export const resolveConfig = (raw, { root, rootPackage }) => {
     version: raw.version ?? rootPackage.version,
     description: raw.description ?? raw.name,
     author: raw.author ?? rootPackage.author ?? '',
-    outDir: path.resolve(root, raw.outDir ?? 'dist-desktop'),
-    next: {
-      distDir,
-      buildEnv: raw.next?.buildEnv ?? {},
-      env: raw.next?.env ?? {},
-      readyPath: raw.next?.readyPath ?? '/',
-    },
+    outDir,
+    app,
     servers,
+    startTimeoutMs,
     window: { width: 1280, height: 800, loadingText: `Starting ${raw.name}…`, ...raw.window },
     errorHint: raw.errorHint ?? `Close other copies of ${raw.name} and try again.`,
   };
 };
 
 // What the packaged app reads at start-up (app.json next to main.mjs). Build-time settings, such
-// as the Next build env, stay out of it.
+// as the app's build env, stay out of it.
 export const runtimeConfig = (config) => ({
   name: config.name,
   window: config.window,
   errorHint: config.errorHint,
+  startTimeoutMs: config.startTimeoutMs,
   servers: config.servers.map(({ name, label, env, readyPath }) => ({
     name,
     label,
@@ -75,8 +106,8 @@ export const runtimeConfig = (config) => ({
     label: 'app server',
     dir: 'web',
     entry: 'server.js',
-    env: config.next.env,
-    readyPath: config.next.readyPath,
+    env: config.app.env,
+    readyPath: config.app.readyPath,
   },
 });
 

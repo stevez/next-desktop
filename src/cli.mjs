@@ -1,21 +1,33 @@
-// next-desktop command line. See ../README.md.
+// web-terrarium command line. See ../README.md.
 /* eslint-disable no-console -- command-line tool */
 import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-// eslint-disable-next-line import-x/extensions
 import { installTools, packageApp, stageApp, startStaged } from './build.mjs';
-// eslint-disable-next-line import-x/extensions
 import { resolveConfig } from './config.mjs';
-// eslint-disable-next-line import-x/extensions
-import { hostTarget, parseCli } from './packageConfig.mjs';
+import { configFile, hostTarget, parseCli, usage } from './packageConfig.mjs';
+
+const ownVersion = () =>
+  JSON.parse(fs.readFileSync(path.join(import.meta.dirname, '..', 'package.json'), 'utf8')).version;
 
 export const run = async (args, { cwd = process.cwd() } = {}) => {
   const options = parseCli(args);
-  const configFile = path.resolve(cwd, options.config);
-  const root = path.dirname(configFile);
-  const { default: raw } = await import(pathToFileURL(configFile).href);
+  if (options.command === 'help') {
+    console.log(usage(ownVersion()));
+    return;
+  }
+  if (options.command === 'version') {
+    console.log(ownVersion());
+    return;
+  }
+
+  const file = configFile({ cwd, config: options.config, exists: fs.existsSync });
+  if (!fs.existsSync(file)) {
+    throw new Error(`No config file at ${file}. Add terrarium.config.mjs (see the README) or pass --config.`);
+  }
+  const root = path.dirname(file);
+  const { default: raw } = await import(pathToFileURL(file).href);
   const rootPackage = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
   const config = resolveConfig(raw, { root, rootPackage });
 
@@ -24,10 +36,12 @@ export const run = async (args, { cwd = process.cwd() } = {}) => {
     return;
   }
   if (options.command === 'install-tools') {
-    installTools(config, { registry: process.env.NEXT_DESKTOP_REGISTRY });
+    // NEXT_DESKTOP_REGISTRY is the name from before the rename.
+    const registry = process.env.WEB_TERRARIUM_REGISTRY ?? process.env.NEXT_DESKTOP_REGISTRY;
+    installTools(config, registry ? { registry } : {});
     return;
   }
-  // Check the system first so an unsupported one fails before the slow Next build.
+  // Check the system first so an unsupported one fails before the slow web build.
   const target = options.package ? hostTarget(process.platform, process.arch) : null;
   if (options.stage) await stageApp(config);
   if (options.package) {

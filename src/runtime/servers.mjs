@@ -6,7 +6,8 @@ import net from 'node:net';
 import path from 'node:path';
 
 const HOST = '127.0.0.1';
-const LOG_NAME = 'next-desktop';
+// Prefix for web-terrarium's own lines in servers.log. CI smoke tests match on it.
+export const LOG_NAME = 'web-terrarium';
 
 export const freePort = ({ createServer = net.createServer } = {}) =>
   new Promise((resolve, reject) => {
@@ -155,7 +156,10 @@ export const startServers = async ({
     if (stopping) throw cancelled;
     run(server);
     const url = `http://${HOST}:${ports[server.name]}`;
-    await Promise.race([waitImpl(`${url}${server.readyPath}`), startupFailed]);
+    await Promise.race([
+      waitImpl(`${url}${server.readyPath}`, { timeoutMs: config.startTimeoutMs }),
+      startupFailed,
+    ]);
     onOutput(LOG_NAME, `${server.name} ready at ${url}\n`);
     await startInOrder(rest);
   };
