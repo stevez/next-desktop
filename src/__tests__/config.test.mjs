@@ -203,6 +203,24 @@ describe('runtimeConfig', () => {
   });
 });
 
+describe('runtimeConfig appDir', () => {
+  it('starts the app server from its folder inside web/ when Next put it deeper', () => {
+    const app = runtimeConfig(resolve(minimal), { appDir: 'development/my-app' }).app;
+
+    expect(app).toMatchObject({ dir: 'web/development/my-app', entry: 'server.js' });
+  });
+});
+
+describe('icon', () => {
+  it('resolves a configured icon from the project root', () => {
+    expect(resolve({ ...minimal, icon: 'brand/app.png' }).icon).toBe(path.join(root, 'brand', 'app.png'));
+  });
+
+  it('passes the staged icon name to the packaged app', () => {
+    expect(runtimeConfig(resolve(minimal), { icon: 'icon.ico' }).icon).toBe('icon.ico');
+  });
+});
+
 describe('stagePaths', () => {
   it('lays out the output folder', () => {
     const out = path.join(root, 'dist-desktop');

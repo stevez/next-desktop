@@ -160,6 +160,25 @@ describe('builderConfig', () => {
     expect(mac.artifactName).toBe('Acme-Demo-${version}-mac.${ext}');
   });
 
+  it('uses Electron icons when the app has none', () => {
+    const { win, mac } = make();
+
+    expect(win.icon).toBeUndefined();
+    expect(mac.icon).toBeUndefined();
+  });
+
+  it.each([
+    ['icon.png', 'icon.png', 'icon.png'],
+    ['icon.ico', 'icon.ico', undefined],
+    ['icon.icns', undefined, 'icon.icns'],
+  ])('gives %s to the systems that can use it', (file, winIcon, macIcon) => {
+    const icon = path.join('dist', 'stage', file);
+    const { win, mac } = builderConfig({ config, paths, electronVersion: '44.0.0', copy: vi.fn(), icon });
+
+    expect(win.icon).toBe(winIcon && icon);
+    expect(mac.icon).toBe(macIcon && icon);
+  });
+
   it('ad-hoc signs the Mac app without the hardened runtime or notarization', () => {
     expect(make().mac).toMatchObject({ identity: '-', hardenedRuntime: false, notarize: false });
   });

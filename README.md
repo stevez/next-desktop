@@ -58,7 +58,7 @@ How it works inside (modules, build and run-time flow, security, how to extend):
    "desktop:start": "web-terrarium start"
    ```
 
-5. Add `.next-terrarium` and `dist-desktop` to `.gitignore`.
+5. Add `.next-terrarium` and `dist-desktop` to `.gitignore`. In a TypeScript project, the first desktop build adds `.next-terrarium/types/**/*.ts` to `tsconfig.json`'s `include`; commit that change.
 
 ## Commands
 
@@ -84,6 +84,7 @@ Add `--config <file>` to use a config other than `./terrarium.config.mjs`. Error
 | `version`, `author` | from `package.json` | |
 | `description` | `name` | |
 | `outDir` | `dist-desktop` | Stage and zips. Deleted at the start of each `stage`, so it must be a folder inside the project, never the project itself. |
+| `icon` | the web app's icon | A PNG (512 x 512 or larger works everywhere), `.ico` (Windows only) or `.icns` (Mac only). If not set, web-terrarium uses the first it finds of `src/app/icon.png`, `app/icon.png`, `public/icon.png`, then `favicon.ico` in `src/app/`, `app/` or `public/`. A Mac app can't use an `.ico`, so it keeps Electron's icon then. |
 | `app.type` | `next` | The kind of web app. Only `next` today. |
 | `app.distDir` | `.next-terrarium` | Must not be `.next`. |
 | `app.buildEnv` | `{}` | Env for `next build`. `NEXT_PUBLIC_*` values are baked in here. |
@@ -106,7 +107,7 @@ Env values can use `{host}` (always `127.0.0.1`), `{port}` (the server's own por
 
 1. Picks a free port for each server and for the Next server.
 2. Starts each server with Electron's own Node (`ELECTRON_RUN_AS_NODE=1`), in order, and waits for its `readyPath`. Then starts the Next server the same way.
-3. Shows the app in a sandboxed window. Links to other sites open in the browser; only `https` links are opened.
+3. Shows the app in a sandboxed window, titled with the config's `name` (not the page's `<title>`). Links to other sites open in the browser; only `https` links are opened.
 4. Stops every server when the app quits.
 
 The servers' output goes to `servers.log` in the user-data folder: `%APPDATA%\<name>` on Windows, `~/Library/Application Support/<name>` on Mac. Each server logs `[web-terrarium] <server> ready at <url>` once it answers.
@@ -135,5 +136,6 @@ Old projects keep working, so you can move over one step at a time:
 - **Windows x64 only.** Windows builds are x64, and building on a Windows ARM machine stops with an error. The x64 app may run on ARM PCs through Windows' emulation, but that's untested.
 - **Not code-signed**, so Windows SmartScreen and macOS Gatekeeper may warn or block it. Sign it before sharing it outside your team.
 - **Size.** The zip is about 160 MB: Electron plus the Next standalone server.
+- **Long paths on Windows.** Paths inside the zip can be over 150 characters (deep `node_modules`). Unzip it into a short folder, such as `Downloads` or `C:\Apps`; deep folders can hit Windows' 260-character limit.
 - **No auto-update.**
 - **Electron only.** Tauri isn't planned: the apps this is for need Node servers, which Tauri would have to ship separately.

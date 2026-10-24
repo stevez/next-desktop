@@ -7,7 +7,17 @@ import { build } from 'esbuild';
 import { afterAll, describe, expect, it } from 'vitest';
 
 import { __dirname as shimDirname, __filename as shimFilename } from '../bundleShims';
-import { electronPackageJson, esbuildOptions, nextBuildEnv, sharpSwap, toolsLockfile } from '../stage';
+import {
+  electronPackageJson,
+  esbuildOptions,
+  findIcon,
+  ICON_CANDIDATES,
+  nextBuildEnv,
+  sharpSwap,
+  stagedIconName,
+  standaloneAppDir,
+  toolsLockfile,
+} from '../stage';
 
 const config = {
   name: 'Acme Demo',
@@ -27,6 +37,81 @@ describe('nextBuildEnv', () => {
       NEXT_DESKTOP_DIST_DIR: '.next-demo',
       NEXT_TELEMETRY_DISABLED: '1',
     });
+  });
+});
+
+describe('standaloneAppDir', () => {
+  it('finds server.js at the top of standalone/ for most projects', () => {
+    expect(standaloneAppDir(['server.js', 'node_modules/next/dist/server.js'])).toBe('');
+  });
+
+  it('finds it deeper when Next traced from a parent folder (a monorepo, or a parent lockfile)', () => {
+    expect(
+      standaloneAppDir([
+        'node_modules/next/server.js',
+        'development/my-app/node_modules/some-lib/server.js',
+        'development/my-app/server.js',
+      ]),
+    ).toBe('development/my-app');
+  });
+
+  it('prefers the shallowest server.js outside node_modules', () => {
+    expect(standaloneAppDir(['apps/web/src/server.js', 'apps/web/server.js'])).toBe('apps/web');
+    expect(standaloneAppDir(['apps/web-admin/server.js', 'apps/web/server.js'])).toBe('apps/web');
+  });
+
+  it('finds nothing when every server.js is a dependency', () => {
+    expect(standaloneAppDir(['node_modules/next/server.js'])).toBeUndefined();
+    expect(standaloneAppDir([])).toBeUndefined();
+  });
+});
+
+describe('findIcon', () => {
+  const root = path.resolve('project');
+  const has = (...files) => (file) => files.some((name) => file === path.join(root, name));
+
+  it('uses the icon the config sets', () => {
+    const icon = path.join(root, 'brand', 'app.png');
+
+    expect(findIcon({ root, icon }, has('brand/app.png', 'src/app/favicon.ico'))).toBe(icon);
+  });
+
+  it('refuses a configured icon that does not exist', () => {
+    const icon = path.join(root, 'brand', 'app.png');
+
+    expect(() => findIcon({ root, icon }, has())).toThrow(`The icon ${icon} doesn't exist.`);
+  });
+
+  it("prefers Next's app icon over the favicon", () => {
+    expect(findIcon({ root }, has('src/app/favicon.ico', 'app/icon.png'))).toBe(
+      path.join(root, 'app', 'icon.png'),
+    );
+  });
+
+  it('falls back to the favicon', () => {
+    expect(findIcon({ root }, has('src/app/favicon.ico'))).toBe(path.join(root, 'src', 'app', 'favicon.ico'));
+  });
+
+  it('finds nothing when the app has no icon', () => {
+    expect(findIcon({ root }, has())).toBeUndefined();
+  });
+
+  it('checks every usual place', () => {
+    expect(ICON_CANDIDATES).toEqual([
+      'src/app/icon.png',
+      'app/icon.png',
+      'public/icon.png',
+      'src/app/favicon.ico',
+      'app/favicon.ico',
+      'public/favicon.ico',
+    ]);
+  });
+});
+
+describe('stagedIconName', () => {
+  it('keeps the format, in lower case', () => {
+    expect(stagedIconName(path.join('a', 'Logo.PNG'))).toBe('icon.png');
+    expect(stagedIconName('favicon.ico')).toBe('icon.ico');
   });
 });
 

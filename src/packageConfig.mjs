@@ -85,7 +85,14 @@ export const hostTarget = (platform, arch) => {
   throw new Error(`The desktop app builds on Windows or macOS only, not ${platform}.`);
 };
 
-export const builderConfig = ({ config, paths, electronVersion, copy }) => ({
+// The icon formats each system's app can use: electron-builder makes .ico and .icns from a PNG,
+// but a Mac app can't use an .ico, so the Mac app keeps Electron's icon then.
+const ICON_FORMATS = { win: ['.png', '.ico'], mac: ['.png', '.icns'] };
+const iconFor = (system, icon) =>
+  icon && ICON_FORMATS[system].includes(path.extname(icon).toLowerCase()) ? { icon } : {};
+
+// `icon` is the staged icon file, if the app has one (see findIcon in stage.mjs).
+export const builderConfig = ({ config, paths, electronVersion, copy, icon }) => ({
   appId: config.appId,
   productName: config.name,
   electronVersion,
@@ -97,9 +104,10 @@ export const builderConfig = ({ config, paths, electronVersion, copy }) => ({
     copy(paths.web, path.join(packager.getResourcesDir(appOutDir), 'web')),
   npmRebuild: false,
   // A zip of the app folder, the simplest unsigned format. electron-builder fills in ${version}.
-  win: { artifactName: `${config.artifactName}-\${version}-win.\${ext}` },
+  win: { artifactName: `${config.artifactName}-\${version}-win.\${ext}`, ...iconFor('win', icon) },
   mac: {
     artifactName: `${config.artifactName}-\${version}-mac.\${ext}`,
+    ...iconFor('mac', icon),
     // Apple Silicon only runs signed apps, so sign ad hoc (no Apple certificate). Without the
     // hardened runtime, macOS lets the ad-hoc signed app load the Next server's native modules.
     identity: '-',

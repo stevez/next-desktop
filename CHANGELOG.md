@@ -18,6 +18,7 @@ First release as web-terrarium (formerly next-desktop). Packages Next.js apps; o
 ### Added
 
 - `startTimeoutMs`: how long to wait for each server at start-up (default 60 s).
+- `icon`: the app's icon. If not set, the web app's own icon is used (`app/icon.png`, then `favicon.ico`).
 - `help` / `--help` / `-h` and `version` / `--version` / `-v`.
 
 ### Fixed
@@ -25,3 +26,5 @@ First release as web-terrarium (formerly next-desktop). Packages Next.js apps; o
 - `stage` refuses an `outDir` that is the project folder or one above it. It deletes `outDir` first, so before this a bad `outDir` would delete the project.
 - Bundled servers give CommonJS dependencies `__dirname` and `__filename`, not just `require`. A server that declares its own `require` or `__dirname` still builds.
 - Building on Windows ARM stops with a clear error instead of making an app whose native modules don't load.
+- Works when Next puts `server.js` deeper inside `standalone/`. That happens in a monorepo, or when Next finds a lockfile in a parent folder. Before, `stage` failed with "No standalone server".
+- The window keeps the app's name as its title, instead of the page's `<title>`.

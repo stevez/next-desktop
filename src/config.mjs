@@ -77,6 +77,7 @@ export const resolveConfig = (raw, { root, rootPackage }) => {
     description: raw.description ?? raw.name,
     author: raw.author ?? rootPackage.author ?? '',
     outDir,
+    icon: raw.icon && path.resolve(root, raw.icon),
     app,
     servers,
     startTimeoutMs,
@@ -86,9 +87,11 @@ export const resolveConfig = (raw, { root, rootPackage }) => {
 };
 
 // What the packaged app reads at start-up (app.json next to main.mjs). Build-time settings, such
-// as the app's build env, stay out of it.
-export const runtimeConfig = (config) => ({
+// as the app's build env, stay out of it. `appDir` is the app server's folder inside web/, found
+// at stage time (see standaloneAppDir in stage.mjs). `icon` is the staged icon's file name.
+export const runtimeConfig = (config, { appDir = '', icon } = {}) => ({
   name: config.name,
+  ...(icon && { icon }),
   window: config.window,
   errorHint: config.errorHint,
   startTimeoutMs: config.startTimeoutMs,
@@ -104,7 +107,7 @@ export const runtimeConfig = (config) => ({
   app: {
     name: 'app',
     label: 'app server',
-    dir: 'web',
+    dir: appDir ? `web/${appDir}` : 'web',
     entry: 'server.js',
     env: config.app.env,
     readyPath: config.app.readyPath,

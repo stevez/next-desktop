@@ -13,6 +13,43 @@ export const nextBuildEnv = (config, baseEnv) => ({
   NEXT_TELEMETRY_DISABLED: '1',
 });
 
+// Next writes the app's server.js to standalone/<the project's path from its tracing root>/. That's
+// standalone/ itself for most projects, but a folder deeper in a monorepo, or when Next finds a
+// lockfile in a parent folder and traces from there. Given every server.js under standalone/
+// (relative, with / separators), returns the app's folder: the shallowest one outside
+// node_modules, or '' for standalone/ itself.
+export const standaloneAppDir = (serverFiles) => {
+  const dirs = serverFiles
+    .filter((file) => !file.split('/').includes('node_modules'))
+    .map((file) => path.posix.dirname(file))
+    .map((dir) => (dir === '.' ? '' : dir))
+    .sort((a, b) => a.split('/').length - b.split('/').length || a.length - b.length);
+  return dirs[0];
+};
+
+// Where a Next.js app keeps its icon, best first: Next's app icon, then the favicon.
+export const ICON_CANDIDATES = [
+  'src/app/icon.png',
+  'app/icon.png',
+  'public/icon.png',
+  'src/app/favicon.ico',
+  'app/favicon.ico',
+  'public/favicon.ico',
+];
+
+// The app's icon: `config.icon` if set, else the first of ICON_CANDIDATES in the project, else
+// undefined (Electron's own icon).
+export const findIcon = ({ root, icon }, exists) => {
+  if (icon) {
+    if (!exists(icon)) throw new Error(`The icon ${icon} doesn't exist.`);
+    return icon;
+  }
+  return ICON_CANDIDATES.map((file) => path.join(root, file)).find((file) => exists(file));
+};
+
+// The staged icon's file name, next to main.mjs.
+export const stagedIconName = (icon) => `icon${path.extname(icon).toLowerCase()}`;
+
 export const electronPackageJson = (config) => ({
   name: config.artifactName.toLowerCase(),
   productName: config.name,

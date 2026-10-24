@@ -132,13 +132,17 @@ sequenceDiagram
 
 ### 5.2 Staging the web server
 
-`stageWeb` copies three things:
+First it finds the app's `server.js`. Next writes it to `standalone/<the project's path from its tracing root>/`. For most projects that's `standalone/` itself. In a monorepo, or when Next finds a lockfile in a parent folder and traces from there, it's deeper, for example `standalone/development/my-app/server.js`, with the shared `node_modules` at the top of `standalone/`. `standaloneAppDir` picks the shallowest `server.js` outside `node_modules`; call its folder `<appDir>`.
+
+Then `stageWeb` copies three things:
 
 - `standalone/` to `resources/web`;
-- `static/` to `web/<distDir>/static`;
-- `public/` to `web/public`.
+- `static/` to `web/<appDir>/<distDir>/static`;
+- `public/` to `web/<appDir>/public`.
 
-Next's standalone output leaves out `static/` and `public/` by design, which is why they're copied separately. `stageWeb` also deletes every `.env*` file from `web`, because they can hold real endpoints or keys and must never ship. It stops with an error if the build produced no standalone `server.js`.
+Next's standalone output leaves out `static/` and `public/` by design, which is why they're copied separately. `stageWeb` also deletes every `.env*` file from `web` and `web/<appDir>`, because they can hold real endpoints or keys and must never ship. It stops with an error if the build produced no standalone `server.js`. `<appDir>` goes into `app.json`, so the runtime starts `web/<appDir>/server.js`.
+
+`stageElectron` also copies the app's icon next to `main.mjs` as `icon.<ext>` (see `findIcon`: the `icon` option, else Next's `app/icon.png`, else `favicon.ico`). `package` reads its name from `app.json` and gives it to electron-builder for each system that can use that format.
 
 ### 5.3 Bundling extra servers
 
