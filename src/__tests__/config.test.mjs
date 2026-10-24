@@ -100,6 +100,7 @@ describe('resolveConfig', () => {
           env: { PORT: '{port}' },
           readyPath: '/ready',
         },
+        { name: 'db', entry: 'db/server.mjs', ready: 'tcp' },
       ],
     });
 
@@ -110,6 +111,7 @@ describe('resolveConfig', () => {
         entry: path.join(root, 'mocks', 'server.mjs'),
         copy: [],
         env: {},
+        ready: 'http',
         readyPath: '/',
       },
       {
@@ -118,7 +120,17 @@ describe('resolveConfig', () => {
         entry: path.join(root, 'search', 'index.js'),
         copy: ['data'],
         env: { PORT: '{port}' },
+        ready: 'http',
         readyPath: '/ready',
+      },
+      {
+        name: 'db',
+        label: 'db server',
+        entry: path.join(root, 'db', 'server.mjs'),
+        copy: [],
+        env: {},
+        ready: 'tcp',
+        readyPath: '/',
       },
     ]);
   });
@@ -148,6 +160,10 @@ describe('resolveConfig', () => {
     [{ ...minimal, servers: [{ name: 'app', entry: 'a.mjs' }] }, 'not "app"'],
     [{ ...minimal, servers: [{ name: 'my mock', entry: 'a.mjs' }] }, 'my mock'],
     [{ ...minimal, servers: [{ name: 'mock' }] }, 'Server mock needs an entry'],
+    [
+      { ...minimal, servers: [{ name: 'db', entry: 'a.mjs', ready: 'udp' }] },
+      'Server db: ready must be one of http, tcp, got "udp"',
+    ],
     [
       {
         ...minimal,
@@ -188,6 +204,7 @@ describe('runtimeConfig', () => {
           dir: 'servers/mock',
           entry: 'server.mjs',
           env: { P: '{port}' },
+          ready: 'http',
           readyPath: '/',
         },
       ],

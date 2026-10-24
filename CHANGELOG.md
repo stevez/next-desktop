@@ -18,6 +18,7 @@ First release as web-terrarium (formerly next-desktop). Packages Next.js apps; o
 ### Added
 
 - `startTimeoutMs`: how long to wait for each server at start-up (default 60 s).
+- `servers[].ready: 'tcp'`: a server is ready once its port takes a connection, for servers that don't speak HTTP, such as an embedded database (PGlite with pglite-socket, say).
 - `icon`: the app's icon. If not set, the web app's own icon is used (`app/icon.png`, then `favicon.ico`).
 - `help` / `--help` / `-h` and `version` / `--version` / `-v`.
 

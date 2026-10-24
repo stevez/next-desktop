@@ -95,7 +95,8 @@ Add `--config <file>` to use a config other than `./terrarium.config.mjs`. Error
 | `servers[].entry` | required | Path from the project root. Bundled with esbuild (ESM, Node 22); bundled CommonJS packages still get `require`, `__dirname` and `__filename`. |
 | `servers[].copy` | `[]` | Files or folders next to the entry, copied beside the bundle. |
 | `servers[].env` | `{}` | Env for that server. |
-| `servers[].readyPath` | `/` | Polled until it answers 2xx. |
+| `servers[].ready` | `http` | How to tell the server is up: `http` polls `readyPath` until it answers 2xx; `tcp` waits until the port takes a connection, for servers that don't speak HTTP, such as a database. |
+| `servers[].readyPath` | `/` | Polled until it answers 2xx (with `ready: 'http'`). |
 | `servers[].label` | `<name> server` | Used in error messages. |
 | `startTimeoutMs` | `60000` | How long to wait for each server's `readyPath` at start-up. |
 | `window` | `1280` x `800` | `{ width, height, loadingText }`. |

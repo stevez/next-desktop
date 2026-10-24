@@ -223,7 +223,7 @@ sequenceDiagram
   - `{port:<name>}` with another server's port (`app` is the Next server).
 
   All ports are picked before any server starts, so any server can refer to any other. An unknown name throws, so a typo fails at start-up with a clear message.
-- **Readiness.** `waitForHttp` polls every 250 ms, with a 1 s timeout per request and `startTimeoutMs` overall (60 s by default). Any 2xx answer counts as ready.
+- **Readiness.** `waitUntilReady` picks the check from the server's `ready` setting. With `http` (the default, and always for the app server), `waitForHttp` polls `readyPath` and any 2xx answer counts. With `tcp`, `waitForTcp` waits until the port takes a connection, for servers that don't speak HTTP, such as a database. Both poll every 250 ms, with a 1 s timeout per try and `startTimeoutMs` overall (60 s by default). A tcp server should listen only once it can serve, so "takes a connection" means "ready".
 - **Failure.** The first child `error` or `exit` rejects a shared `startupFailed` promise, and every readiness wait races against it. A crashed server therefore fails start-up at once instead of after 60 s. On any failure, every started child is killed and the error goes back to `main.mjs`.
 - **Cancelling.** `main.mjs` passes an `AbortSignal`. Aborting it kills the children already running at once (synchronously, because the app may be quitting) and stops any further server from starting.
 - **Crash after start-up.** If a server exits later, the others are stopped and `onExit(error)` is called. Exits caused by `stop()` itself aren't reported.

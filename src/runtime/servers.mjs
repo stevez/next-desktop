@@ -25,16 +25,9 @@ const sleep = (ms) =>
     setTimeout(resolve, ms);
   });
 
-export const waitForHttp = async (
-  url,
-  { fetchImpl = fetch, intervalMs = 250, timeoutMs = 60000 } = {},
-) => {
+// Calls `answers` every intervalMs until it resolves true, or throws after timeoutMs.
+const pollUntil = async (answers, { url, intervalMs, timeoutMs }) => {
   const deadline = Date.now() + timeoutMs;
-  const answers = () =>
-    fetchImpl(url, { signal: AbortSignal.timeout(intervalMs * 4) }).then(
-      (response) => response.ok,
-      () => false,
-    );
   const poll = async () => {
     if (await answers()) return;
     if (Date.now() >= deadline) throw new Error(`${url} did not start within ${timeoutMs} ms`);
@@ -43,6 +36,42 @@ export const waitForHttp = async (
   };
   await poll();
 };
+
+export const waitForHttp = (url, { fetchImpl = fetch, intervalMs = 250, timeoutMs = 60000 } = {}) =>
+  pollUntil(
+    () =>
+      fetchImpl(url, { signal: AbortSignal.timeout(intervalMs * 4) }).then(
+        (response) => response.ok,
+        () => false,
+      ),
+    { url, intervalMs, timeoutMs },
+  );
+
+// For servers that don't speak HTTP, such as a database: ready once the port takes a connection.
+// `url` is tcp://host:port.
+export const waitForTcp = (
+  url,
+  { connectImpl = net.connect, intervalMs = 250, timeoutMs = 60000 } = {},
+) => {
+  const { hostname, port } = new URL(url);
+  const connects = () =>
+    new Promise((resolve) => {
+      const socket = connectImpl({ host: hostname, port: Number(port) });
+      socket.setTimeout(intervalMs * 4);
+      const done = (ok) => {
+        socket.destroy();
+        resolve(ok);
+      };
+      socket.once('connect', () => done(true));
+      socket.once('error', () => done(false));
+      socket.once('timeout', () => done(false));
+    });
+  return pollUntil(connects, { url, intervalMs, timeoutMs });
+};
+
+// Waits for a tcp:// URL with waitForTcp and anything else with waitForHttp.
+export const waitUntilReady = (url, options) =>
+  url.startsWith('tcp://') ? waitForTcp(url, options) : waitForHttp(url, options);
 
 // {host} is 127.0.0.1, {port} the server's own port, {port:name} another server's port.
 export const fillTemplate = (value, { ports, self }) =>
@@ -104,7 +133,7 @@ export const startServers = async ({
   signal,
   spawnImpl = spawn,
   portImpl = freePort,
-  waitImpl = waitForHttp,
+  waitImpl = waitUntilReady,
 }) => {
   const children = [];
   let stopping = false;
@@ -155,9 +184,10 @@ export const startServers = async ({
     if (!server) return;
     if (stopping) throw cancelled;
     run(server);
-    const url = `http://${HOST}:${ports[server.name]}`;
+    const tcp = server.ready === 'tcp';
+    const url = `${tcp ? 'tcp' : 'http'}://${HOST}:${ports[server.name]}`;
     await Promise.race([
-      waitImpl(`${url}${server.readyPath}`, { timeoutMs: config.startTimeoutMs }),
+      waitImpl(tcp ? url : `${url}${server.readyPath}`, { timeoutMs: config.startTimeoutMs }),
       startupFailed,
     ]);
     onOutput(LOG_NAME, `${server.name} ready at ${url}\n`);

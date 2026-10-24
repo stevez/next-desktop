@@ -4,6 +4,8 @@ import path from 'node:path';
 const SERVER_NAME = /^[a-z][\w-]*$/i;
 export const APP_TYPES = ['next'];
 const DEFAULT_START_TIMEOUT_MS = 60000;
+// http: readyPath answers 2xx. tcp: the port takes a connection (a database, say).
+const READY_CHECKS = ['http', 'tcp'];
 
 // True when `dir` is `root` itself or a folder above it, so deleting `dir` would delete the project.
 const containsRoot = (dir, root) => {
@@ -19,12 +21,17 @@ const resolveServer = (server, root) => {
     );
   }
   if (!server.entry) throw new Error(`Server ${name} needs an entry file.`);
+  const ready = server.ready ?? 'http';
+  if (!READY_CHECKS.includes(ready)) {
+    throw new Error(`Server ${name}: ready must be one of ${READY_CHECKS.join(', ')}, got "${ready}".`);
+  }
   return {
     name,
     label: server.label ?? `${name} server`,
     entry: path.resolve(root, server.entry),
     copy: server.copy ?? [],
     env: server.env ?? {},
+    ready,
     readyPath: server.readyPath ?? '/',
   };
 };
@@ -95,12 +102,13 @@ export const runtimeConfig = (config, { appDir = '', icon } = {}) => ({
   window: config.window,
   errorHint: config.errorHint,
   startTimeoutMs: config.startTimeoutMs,
-  servers: config.servers.map(({ name, label, env, readyPath }) => ({
+  servers: config.servers.map(({ name, label, env, ready, readyPath }) => ({
     name,
     label,
     dir: `servers/${name}`,
     entry: 'server.mjs',
     env,
+    ready,
     readyPath,
   })),
   // Not "app": Electron would load resources/app as its own app.
