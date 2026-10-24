@@ -10,11 +10,13 @@ How it works inside (modules, build and run-time flow, security, how to extend):
 
 ## Set up a project
 
-1. Install web-terrarium and the tools it drives as devDependencies. esbuild is only needed if you list extra servers.
+1. Install web-terrarium as a devDependency. It brings the desktop tools it drives (Electron, electron-builder and esbuild) as its own dependencies, at versions it's tested with, so you don't install them yourself:
 
    ```sh
-   npm install --save-dev web-terrarium electron electron-builder esbuild
+   npm install --save-dev web-terrarium
    ```
+
+   Electron downloads its runtime (about 100 MB) on install, once per machine. CI jobs that don't build the desktop app can skip that with `ELECTRON_SKIP_BINARY_DOWNLOAD=1`.
 
 2. In `next.config.js`, build standalone into the folder web-terrarium asks for. The desktop build then never mixes with the normal `.next` build:
 
@@ -68,7 +70,7 @@ How it works inside (modules, build and run-time flow, security, how to extend):
 | `stage` | Runs `next build` with `app.buildEnv`, then stages the standalone server, bundles the extra servers and writes the Electron app into `<outDir>/stage` and `<outDir>/resources`. |
 | `package` | Packages the stage into a zip for this system in `<outDir>/out`. Windows builds a Windows zip, a Mac builds a Mac zip for its chip. Linux can stage but not package. |
 | `start` | Opens the staged app without packaging it. |
-| `install-tools` | For CI runners that can't reach your private registry: installs Electron, electron-builder and sharp from public npm with `npm ci`, at the versions and integrity hashes in `package-lock.json` (sharp must match the staged version), then swaps the stage's sharp binaries for this system's. Set `WEB_TERRARIUM_REGISTRY` to use another registry. |
+| `install-tools` | For CI runners that can't reach your private registry: installs web-terrarium (with its Electron, electron-builder and esbuild) and sharp from public npm with `npm ci`, at the versions and integrity hashes in `package-lock.json` (sharp must match the staged version), then swaps the stage's sharp binaries for this system's. `npx web-terrarium package` then runs that installed copy. Set `WEB_TERRARIUM_REGISTRY` to use another registry. |
 | `help`, `--help`, `-h` | Shows the commands and options. |
 | `version`, `--version`, `-v` | Shows the version. |
 

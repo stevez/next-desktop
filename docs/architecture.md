@@ -33,7 +33,7 @@ flowchart LR
 | --- | --- | --- |
 | Runs on | developer machine or CI, with the project's `node_modules` | the user's machine, inside the packaged app |
 | Entry | `bin/web-terrarium.mjs` → `src/cli.mjs` | `src/runtime/main.mjs` (Electron main) |
-| Can import | the project's `next`, `esbuild`, `electron-builder`, `electron` | Node built-ins and `electron` only |
+| Can import | the project's `next`; web-terrarium's own `esbuild`, `electron-builder`, `electron` | Node built-ins and `electron` only |
 | Config source | `terrarium.config.mjs` (code) | `app.json` (data) |
 
 The run-time files are **copied** into the app as they are. So they import only each other (`main.mjs` → `servers.mjs`, `window.mjs`) and Node built-ins. Everything project-specific reaches them as data in `app.json`. This rule keeps the runtime generic and means the packaged app never runs project config code.
@@ -128,7 +128,7 @@ sequenceDiagram
 
 `nextBuildEnv` sets `WEB_TERRARIUM_DIST_DIR` (and the pre-rename `NEXT_DESKTOP_DIST_DIR`, for configs that still read it), and the project's `next.config.js` uses it as `distDir`. With `output: 'standalone'`, Next copies only the files the server needs into `<distDir>/standalone`, including a trimmed `node_modules`. `NEXT_PUBLIC_*` values in `next.buildEnv` are written into the client bundle at this step, so each build has fixed values.
 
-`next` is loaded from the project (`createRequire(<root>/package.json)`), not from web-terrarium's folder, so the build always uses the project's own Next version. `esbuild`, `electron` and `electron-builder` are loaded the same way.
+`next` is loaded from the project (`createRequire(<root>/package.json)`), not from web-terrarium's folder, so the build always uses the project's own Next version; it's an optional peer dependency. The desktop tools are the other way round: `esbuild`, `electron` and `electron-builder` are web-terrarium's own dependencies, loaded from web-terrarium's folder (`createRequire(import.meta.url)`). A web project installs only web-terrarium and always gets tool versions web-terrarium was tested with; a new Electron major needs a web-terrarium release.
 
 ### 5.2 Staging the web server
 
@@ -282,8 +282,8 @@ Next's standalone output includes sharp for image optimization. Its native binar
 
 If you stage and package on the same system, this just works. If the stage was built on another system, `install-tools` fixes it:
 
-1. `toolsLockfile` cuts a small lockfile from the project's `package-lock.json`: `electron`, `electron-builder` and `sharp` (which must match the staged `web/node_modules/sharp` version), plus everything they depend on, found the way Node resolves modules. It keeps each `integrity` hash and drops `resolved`, which may point to the private registry. It refuses a package with no hash, so nothing unchecked gets in.
-2. `npm ci` installs that lockfile from the public registry (or `WEB_TERRARIUM_REGISTRY`) into a temporary folder, which then becomes `./node_modules`. npm checks every tarball against its hash, so the runner gets exactly the audited packages. The command refuses to run if `node_modules` already exists, so it can't damage a developer's checkout.
+1. `toolsLockfile` cuts a small lockfile from the project's `package-lock.json`: `web-terrarium` and `sharp` (which must match the staged `web/node_modules/sharp` version), plus everything they depend on, found the way Node resolves modules. That brings web-terrarium's own Electron, electron-builder and esbuild, even where npm nested them under `node_modules/web-terrarium/node_modules/`. web-terrarium's peer (`next`) is left out: packaging doesn't need it. It keeps each `integrity` hash and drops `resolved`, which may point to the private registry. It refuses a package with no hash, so nothing unchecked gets in, and a web-terrarium installed from a local folder (a `link` in the lockfile).
+2. `npm ci` installs that lockfile from the public registry (or `WEB_TERRARIUM_REGISTRY`) into a temporary folder, which then becomes `./node_modules`. npm checks every tarball against its hash, so the runner gets exactly the audited packages. It skips Electron's runtime download, because packaging downloads the Electron it packs. The command refuses to run if `node_modules` already exists, so it can't damage a developer's checkout. `npx web-terrarium package` then runs the copy it installed.
 3. `sharpSwap` removes every staged `@img/sharp-*` folder and copies in the ones npm just installed for this system.
 
 ## 9. CI design
@@ -298,7 +298,7 @@ flowchart LR
   C --> E["&lt;app&gt;-mac.zip"]
 ```
 
-- The package jobs never run the project's `npm ci`. They need only Electron, electron-builder and sharp, which `install-tools` installs at the lockfile versions and hashes.
+- The package jobs never run the project's `npm ci`. They need only web-terrarium (with its Electron, electron-builder and esbuild) and sharp, which `install-tools` installs at the lockfile versions and hashes. To run `install-tools` before anything is installed, the job fetches web-terrarium itself with `npx web-terrarium@<version>` from public npm.
 - The stage travels as a `.tgz`, because `upload-artifact` loses file modes and symlinks, which the Mac app and `node_modules/.bin` need.
 - The template leaves the smoke test as a TODO, because it depends on the app. A full smoke test would do this: launch the packaged app, reads the `app ready at` URL from `servers.log`, checks the page, closes the app as a user would, and checks that every server has stopped. On a Mac it also verifies the signature with `codesign`.
 

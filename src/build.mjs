@@ -27,10 +27,12 @@ const step = (text) => console.log(`\n> ${text}`);
 const copy = (from, to) => fs.cpSync(from, to, { recursive: true });
 const writeJson = (file, value) => fs.writeFileSync(file, `${JSON.stringify(value, null, 2)}\n`);
 
-// Packages come from the project, not from web-terrarium's own folder.
+// The web framework (next) comes from the project, so the build uses the project's own version.
 const projectRequire = (config) => createRequire(path.join(config.root, 'package.json'));
-const importFromProject = (config, name) =>
-  import(pathToFileURL(projectRequire(config).resolve(name)).href);
+// The desktop tools (electron, electron-builder, esbuild) are web-terrarium's own dependencies, so
+// a web project never installs them itself.
+const ownRequire = createRequire(import.meta.url);
+const importOwn = (name) => import(pathToFileURL(ownRequire.resolve(name)).href);
 
 const buildNext = (config) => {
   step('Building the Next.js app (desktop mode)');
@@ -83,7 +85,7 @@ const stageWeb = (config, paths) => {
 
 const stageServers = async (config, paths) => {
   if (!config.servers.length) return;
-  const { build } = await importFromProject(config, 'esbuild');
+  const { build } = await importOwn('esbuild');
   // Sequential so the log reads in order.
   // eslint-disable-next-line no-restricted-syntax
   for (const server of config.servers) {
@@ -132,7 +134,7 @@ export const packageApp = async (config, target) => {
   requireStage(paths);
   step(`Packaging the ${target.label} app`);
   fs.rmSync(paths.packaged, { recursive: true, force: true });
-  const { Arch, build, Platform } = await importFromProject(config, 'electron-builder');
+  const { Arch, build, Platform } = await importOwn('electron-builder');
   // From the stage, which may have been built on another machine.
   const { icon } = readJson(path.join(paths.stage, 'app.json'));
   await build({
@@ -142,7 +144,7 @@ export const packageApp = async (config, target) => {
       config,
       paths,
       icon: icon && path.join(paths.stage, icon),
-      electronVersion: projectRequire(config)('electron/package.json').version,
+      electronVersion: ownRequire('electron/package.json').version,
       copy,
     }),
   });
@@ -152,16 +154,17 @@ export const packageApp = async (config, target) => {
 export const startStaged = (config) => {
   const paths = stagePaths(config);
   requireStage(paths);
-  const electron = projectRequire(config)('electron');
+  const electron = ownRequire('electron');
   const child = spawn(electron, [paths.stage], { stdio: 'inherit' });
   child.on('exit', (code) => process.exit(code ?? 0));
 };
 
 const readJson = (file) => JSON.parse(fs.readFileSync(file, 'utf8'));
 
-// For CI runners that can't reach the project's private registry: installs Electron,
-// electron-builder and sharp from public npm into ./node_modules with `npm ci`, at the versions
-// and integrity hashes in package-lock.json, then swaps the stage's sharp binaries for this system's.
+// For CI runners that can't reach the project's private registry: installs web-terrarium (with
+// Electron, electron-builder and esbuild) and sharp from public npm into ./node_modules with
+// `npm ci`, at the versions and integrity hashes in package-lock.json, then swaps the stage's sharp
+// binaries for this system's. `npx web-terrarium package` then runs that installed copy.
 export const installTools = (config, { registry = PUBLIC_REGISTRY } = {}) => {
   const paths = stagePaths(config);
   requireStage(paths);
@@ -186,6 +189,8 @@ export const installTools = (config, { registry = PUBLIC_REGISTRY } = {}) => {
     cwd: tools,
     stdio: 'inherit',
     shell: process.platform === 'win32',
+    // Packaging downloads the Electron it packs itself, so skip the 100 MB `npm start` binary.
+    env: { ...process.env, ELECTRON_SKIP_BINARY_DOWNLOAD: '1' },
   });
   fs.renameSync(path.join(tools, 'node_modules'), nodeModules);
   fs.rmSync(tools, { recursive: true, force: true });

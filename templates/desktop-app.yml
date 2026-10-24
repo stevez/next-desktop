@@ -4,7 +4,8 @@ name: Desktop app (Windows and Mac)
 #
 # Stages the web app once on Linux, then packages it on a Windows and a macOS runner and uploads
 # the zips. If your Linux runner can reach every package but the OS runners can't (a private
-# registry, say), keep install-tools; otherwise you can replace it with `npm ci`.
+# registry, say), keep install-tools; otherwise you can replace it with `npm ci` and run
+# `npx web-terrarium package`.
 on:
   workflow_dispatch:
 
@@ -15,9 +16,12 @@ env:
   APP_NAME: Acme Demo # TODO: `name` in terrarium.config.mjs
   ARTIFACT: Acme-Demo # TODO: `artifactName` in terrarium.config.mjs
   OUT_DIR: dist-desktop # TODO: `outDir` in terrarium.config.mjs
-  # TODO: path to web-terrarium's bin/web-terrarium.mjs in your repo. The package job runs it before
-  # anything is installed, so it can't come from node_modules there.
-  WEB_TERRARIUM: packages/web-terrarium/bin/web-terrarium.mjs
+  # TODO: the web-terrarium version in your package-lock.json. The package job runs it from public
+  # npm before anything is installed, to install the packaging tools.
+  WEB_TERRARIUM_VERSION: 0.1.0
+  # Packaging downloads the Electron it packs itself; the 100 MB runtime from `npm install` (for
+  # `web-terrarium start`) isn't needed in CI.
+  ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
 
 jobs:
   stage:
@@ -31,7 +35,7 @@ jobs:
           node-version: '22'
           cache: 'npm'
       - run: npm ci
-      - run: node "$WEB_TERRARIUM" stage
+      - run: npx web-terrarium stage
       # A tarball keeps file modes and symlinks, which upload-artifact drops.
       - run: tar -czf desktop-stage.tgz "$OUT_DIR"
       - uses: actions/upload-artifact@v4
@@ -64,10 +68,12 @@ jobs:
         with:
           name: desktop-stage
       - run: tar -xzf desktop-stage.tgz && rm desktop-stage.tgz
+      # Installs web-terrarium and sharp into ./node_modules at the versions and integrity hashes in
+      # package-lock.json, so the next step runs the audited copy, not the one npx fetched.
       - name: Install the packaging tools from public npm
-        run: node "$WEB_TERRARIUM" install-tools
+        run: npx --yes "web-terrarium@$WEB_TERRARIUM_VERSION" install-tools
       - name: Package the app
-        run: node "$WEB_TERRARIUM" package
+        run: npx web-terrarium package
         env:
           # The Mac app is ad-hoc signed (no certificate); electron-builder skips that on PRs otherwise.
           CSC_FOR_PULL_REQUEST: 'true'
