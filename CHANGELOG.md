@@ -7,6 +7,8 @@ First release as web-terrarium (formerly next-desktop). Packages Next.js apps; o
 ### Changed
 
 - Renamed to web-terrarium. The `next-desktop` command still works.
+- Electron, electron-builder and esbuild are web-terrarium's own dependencies, not peer dependencies, so a project installs only `web-terrarium`. Next.js stays an optional peer dependency.
+- `install-tools` installs web-terrarium (with its tools) and sharp from the lockfile, and `npx web-terrarium package` runs that copy. The CI template is updated.
 - The config file is `terrarium.config.mjs`. `desktop.config.mjs` is still read when it's the only one.
 - The web app is set with `app: { type: 'next', ... }`. `next: { ... }` still works.
 - `next.config.js` reads `WEB_TERRARIUM_DIST_DIR`. `NEXT_DESKTOP_DIST_DIR` is still set.
@@ -29,3 +31,4 @@ First release as web-terrarium (formerly next-desktop). Packages Next.js apps; o
 - Building on Windows ARM stops with a clear error instead of making an app whose native modules don't load.
 - Works when Next puts `server.js` deeper inside `standalone/`. That happens in a monorepo, or when Next finds a lockfile in a parent folder. Before, `stage` failed with "No standalone server".
 - The window keeps the app's name as its title, instead of the page's `<title>`.
+- Closing the window while the app page is still loading quits quietly. Before, it showed a "could not start" error (ERR_FAILED), and the app and its servers kept running until the error was dismissed.

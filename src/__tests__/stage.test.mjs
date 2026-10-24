@@ -212,13 +212,21 @@ describe('toolsLockfile', () => {
     dev: true,
     ...extra,
   });
+  // web-terrarium as a devDependency. Its electron is nested under it (the project has another
+  // electron at the top), electron-builder and esbuild are hoisted, and next (its peer) is the
+  // project's own.
   const lock = {
     packages: {
-      '': { name: 'app', devDependencies: { electron: '^44.0.0' } },
-      'node_modules/electron': entry('44.7.0', {
+      '': { name: 'app', devDependencies: { 'web-terrarium': '^0.1.0' } },
+      'node_modules/web-terrarium': entry('0.1.0', {
+        dependencies: { electron: '^45.0.0', 'electron-builder': '^26.18.0', esbuild: '^0.28.2' },
+        peerDependencies: { next: '>=15' },
+      }),
+      'node_modules/web-terrarium/node_modules/electron': entry('45.0.0', {
         hasInstallScript: true,
         dependencies: { '@electron/get': '^2.0.0', extract: '^1.0.0' },
       }),
+      'node_modules/electron': entry('33.0.0'),
       'node_modules/@electron/get': entry('2.0.3', { dependencies: { semver: '^6.0.0' } }),
       'node_modules/@electron/get/node_modules/semver': entry('6.3.1', {
         dependencies: { 'lru-cache': '^5.0.0' },
@@ -232,9 +240,12 @@ describe('toolsLockfile', () => {
       'node_modules/yauzl': entry('2.10.0', { optional: true }),
       'node_modules/peer-dep': entry('1.0.0', { peer: true, devOptional: true }),
       'node_modules/semver': entry('7.7.0'),
-      'node_modules/electron-builder': entry('26.15.3', {
+      'node_modules/electron-builder': entry('26.18.0', {
         dependencies: { semver: '^7.0.0', extract: '^1.0.0' },
       }),
+      'node_modules/esbuild': entry('0.28.2'),
+      'node_modules/next': entry('15.5.9', { dependencies: { 'next-only': '^1.0.0' } }),
+      'node_modules/next-only': entry('1.0.0'),
       'node_modules/sharp': entry('0.35.4', {
         optionalDependencies: { '@img/sharp-win32-x64': '0.35.4' },
       }),
@@ -242,9 +253,66 @@ describe('toolsLockfile', () => {
       'node_modules/unrelated': entry('1.0.0'),
     },
   };
-  const dependencies = { electron: '44.7.0', 'electron-builder': '26.15.3', sharp: '0.35.4' };
+  // What the tools lockfile keeps: no `resolved`, `dev` or `peer`, every integrity hash.
+  const tools = {
+    'node_modules/web-terrarium': {
+      version: '0.1.0',
+      integrity: 'sha512-0.1.0',
+      dependencies: { electron: '^45.0.0', 'electron-builder': '^26.18.0', esbuild: '^0.28.2' },
+      peerDependencies: { next: '>=15' },
+    },
+    'node_modules/web-terrarium/node_modules/electron': {
+      version: '45.0.0',
+      integrity: 'sha512-45.0.0',
+      hasInstallScript: true,
+      dependencies: { '@electron/get': '^2.0.0', extract: '^1.0.0' },
+    },
+    'node_modules/@electron/get': {
+      version: '2.0.3',
+      integrity: 'sha512-2.0.3',
+      dependencies: { semver: '^6.0.0' },
+    },
+    'node_modules/@electron/get/node_modules/semver': {
+      version: '6.3.1',
+      integrity: 'sha512-6.3.1',
+      dependencies: { 'lru-cache': '^5.0.0' },
+    },
+    'node_modules/@electron/get/node_modules/lru-cache': {
+      version: '5.1.1',
+      integrity: 'sha512-5.1.1',
+    },
+    'node_modules/extract': {
+      version: '1.0.0',
+      integrity: 'sha512-1.0.0',
+      optionalDependencies: { yauzl: '^2.0.0', 'not-for-this-os': '^1.0.0' },
+      peerDependencies: { 'peer-dep': '*', 'missing-peer': '*' },
+    },
+    'node_modules/yauzl': { version: '2.10.0', integrity: 'sha512-2.10.0', optional: true },
+    'node_modules/peer-dep': { version: '1.0.0', integrity: 'sha512-1.0.0' },
+    'node_modules/semver': { version: '7.7.0', integrity: 'sha512-7.7.0' },
+    'node_modules/electron-builder': {
+      version: '26.18.0',
+      integrity: 'sha512-26.18.0',
+      dependencies: { semver: '^7.0.0', extract: '^1.0.0' },
+    },
+    'node_modules/esbuild': { version: '0.28.2', integrity: 'sha512-0.28.2' },
+  };
+  const sharp = {
+    'node_modules/sharp': {
+      version: '0.35.4',
+      integrity: 'sha512-0.35.4',
+      optionalDependencies: { '@img/sharp-win32-x64': '0.35.4' },
+    },
+    'node_modules/@img/sharp-win32-x64': {
+      version: '0.35.4',
+      integrity: 'sha512-0.35.4',
+      optional: true,
+      cpu: ['x64'],
+    },
+  };
 
-  it('pins the tools to the lockfile and keeps every integrity hash', () => {
+  it('pins web-terrarium, its tools and sharp to the lockfile and keeps every integrity hash', () => {
+    const dependencies = { 'web-terrarium': '0.1.0', sharp: '0.35.4' };
     const { packageJson, lockfile } = toolsLockfile({ lock, sharpVersion: '0.35.4' });
 
     expect(packageJson).toEqual({ name: 'web-terrarium-tools', private: true, dependencies });
@@ -252,82 +320,61 @@ describe('toolsLockfile', () => {
       name: 'web-terrarium-tools',
       lockfileVersion: 3,
       requires: true,
-      packages: {
-        '': { name: 'web-terrarium-tools', dependencies },
-        'node_modules/electron': {
-          version: '44.7.0',
-          integrity: 'sha512-44.7.0',
-          hasInstallScript: true,
-          dependencies: { '@electron/get': '^2.0.0', extract: '^1.0.0' },
-        },
-        'node_modules/@electron/get': {
-          version: '2.0.3',
-          integrity: 'sha512-2.0.3',
-          dependencies: { semver: '^6.0.0' },
-        },
-        'node_modules/@electron/get/node_modules/semver': {
-          version: '6.3.1',
-          integrity: 'sha512-6.3.1',
-          dependencies: { 'lru-cache': '^5.0.0' },
-        },
-        'node_modules/@electron/get/node_modules/lru-cache': {
-          version: '5.1.1',
-          integrity: 'sha512-5.1.1',
-        },
-        'node_modules/extract': {
-          version: '1.0.0',
-          integrity: 'sha512-1.0.0',
-          optionalDependencies: { yauzl: '^2.0.0', 'not-for-this-os': '^1.0.0' },
-          peerDependencies: { 'peer-dep': '*', 'missing-peer': '*' },
-        },
-        'node_modules/yauzl': { version: '2.10.0', integrity: 'sha512-2.10.0', optional: true },
-        'node_modules/peer-dep': { version: '1.0.0', integrity: 'sha512-1.0.0' },
-        'node_modules/semver': { version: '7.7.0', integrity: 'sha512-7.7.0' },
-        'node_modules/electron-builder': {
-          version: '26.15.3',
-          integrity: 'sha512-26.15.3',
-          dependencies: { semver: '^7.0.0', extract: '^1.0.0' },
-        },
-        'node_modules/sharp': {
-          version: '0.35.4',
-          integrity: 'sha512-0.35.4',
-          optionalDependencies: { '@img/sharp-win32-x64': '0.35.4' },
-        },
-        'node_modules/@img/sharp-win32-x64': {
-          version: '0.35.4',
-          integrity: 'sha512-0.35.4',
-          optional: true,
-          cpu: ['x64'],
-        },
-      },
+      packages: { '': { name: 'web-terrarium-tools', dependencies }, ...tools, ...sharp },
     });
+  });
+
+  it('takes the electron web-terrarium depends on, not another one in the project', () => {
+    const { lockfile } = toolsLockfile({ lock, sharpVersion: undefined });
+
+    expect(lockfile.packages['node_modules/web-terrarium/node_modules/electron'].version).toBe(
+      '45.0.0',
+    );
+    expect(lockfile.packages['node_modules/electron']).toBeUndefined();
+  });
+
+  it('leaves out the peer of web-terrarium, which is the project framework', () => {
+    const { lockfile } = toolsLockfile({ lock, sharpVersion: undefined });
+
+    expect(lockfile.packages['node_modules/next']).toBeUndefined();
+    expect(lockfile.packages['node_modules/next-only']).toBeUndefined();
   });
 
   it('skips sharp when the app does not use it', () => {
     const { packageJson, lockfile } = toolsLockfile({ lock, sharpVersion: undefined });
 
-    expect(packageJson.dependencies).toEqual({ electron: '44.7.0', 'electron-builder': '26.15.3' });
-    expect(lockfile.packages['node_modules/sharp']).toBeUndefined();
+    expect(packageJson.dependencies).toEqual({ 'web-terrarium': '0.1.0' });
+    expect(lockfile.packages).toEqual({ '': expect.anything(), ...tools });
   });
 
-  it("carries the project's overrides, which npm ci checks the lockfile against", () => {
+  it('carries the project overrides, which npm ci checks the lockfile against', () => {
     const overrides = { semver: '7.7.0', extract: { yauzl: '2.10.0' } };
     const { packageJson } = toolsLockfile({ lock, sharpVersion: undefined, overrides });
 
     expect(packageJson).toEqual({
       name: 'web-terrarium-tools',
       private: true,
-      dependencies: { electron: '44.7.0', 'electron-builder': '26.15.3' },
+      dependencies: { 'web-terrarium': '0.1.0' },
       overrides,
     });
   });
 
-  it('refuses a lockfile without the packaging tools', () => {
+  it('refuses a lockfile without web-terrarium', () => {
     expect(() => toolsLockfile({ lock: { packages: {} }, sharpVersion: undefined })).toThrow(
-      'electron is not in package-lock.json. Add it as a devDependency.',
+      'web-terrarium is not in package-lock.json. Add it as a devDependency.',
     );
     expect(() => toolsLockfile({ lock: {}, sharpVersion: undefined })).toThrow(
-      'electron is not in package-lock.json',
+      'web-terrarium is not in package-lock.json',
+    );
+  });
+
+  it('refuses web-terrarium installed from a local folder', () => {
+    const linked = {
+      packages: { 'node_modules/web-terrarium': { resolved: '../web-terrarium', link: true } },
+    };
+
+    expect(() => toolsLockfile({ lock: linked, sharpVersion: undefined })).toThrow(
+      'web-terrarium is installed from a local folder. install-tools needs it from a registry',
     );
   });
 
@@ -344,7 +391,7 @@ describe('toolsLockfile', () => {
   it('refuses a required dependency missing from the lockfile', () => {
     const broken = { packages: { ...lock.packages, 'node_modules/@electron/get': undefined } };
     expect(() => toolsLockfile({ lock: broken, sharpVersion: undefined })).toThrow(
-      '@electron/get, needed by node_modules/electron, is not in package-lock.json.',
+      '@electron/get, needed by node_modules/web-terrarium/node_modules/electron, is not in package-lock.json.',
     );
   });
 

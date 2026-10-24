@@ -102,12 +102,20 @@ const resolveKey = (packages, from, name) => {
   return packages[`node_modules/${name}`] ? `node_modules/${name}` : undefined;
 };
 
-// A lockfile for just the packaging tools and their dependencies, cut from the project's lockfile.
-// `resolved` is dropped so npm fetches from the registry it's given (the project's may be private),
-// and `integrity` is kept so `npm ci` checks every tarball against the audited lockfile.
+// A lockfile for just the packaging tools and their dependencies, cut from the project's lockfile:
+// web-terrarium itself (which brings Electron, electron-builder and esbuild, wherever npm put
+// them) and sharp. `resolved` is dropped so npm fetches from the registry it's given (the
+// project's may be private), and `integrity` is kept so `npm ci` checks every tarball against the
+// audited lockfile.
 export const toolsLockfile = ({ lock, sharpVersion, overrides }) => {
   const packages = lock.packages ?? {};
-  const names = ['electron', 'electron-builder'];
+  const names = ['web-terrarium'];
+  if (packages['node_modules/web-terrarium']?.link) {
+    throw new Error(
+      'web-terrarium is installed from a local folder. install-tools needs it from a registry, ' +
+        'with an integrity hash in package-lock.json.',
+    );
+  }
   if (sharpVersion) {
     const locked = packages['node_modules/sharp']?.version;
     if (locked !== sharpVersion) {
@@ -119,7 +127,9 @@ export const toolsLockfile = ({ lock, sharpVersion, overrides }) => {
   }
 
   const picked = {};
-  const visit = (key) => {
+  // `withPeers` is off for web-terrarium itself: its peer is the project's framework (next), which
+  // packaging doesn't need.
+  const visit = (key, { withPeers = true } = {}) => {
     if (picked[key]) return;
     const { resolved, dev, devOptional, peer, ...entry } = packages[key];
     if (!entry.integrity) throw new Error(`${key} has no integrity hash in package-lock.json.`);
@@ -127,7 +137,7 @@ export const toolsLockfile = ({ lock, sharpVersion, overrides }) => {
     const required = Object.keys(entry.dependencies ?? {});
     const optional = [
       ...Object.keys(entry.optionalDependencies ?? {}),
-      ...Object.keys(entry.peerDependencies ?? {}),
+      ...(withPeers ? Object.keys(entry.peerDependencies ?? {}) : []),
     ];
     required.forEach((name) => {
       const found = resolveKey(packages, key, name);
@@ -148,7 +158,7 @@ export const toolsLockfile = ({ lock, sharpVersion, overrides }) => {
       throw new Error(`${name} is not in package-lock.json. Add it as a devDependency.`);
     }
     dependencies[name] = packages[key].version;
-    visit(key);
+    visit(key, { withPeers: name !== 'web-terrarium' });
   });
 
   return {

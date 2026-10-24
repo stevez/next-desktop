@@ -18,7 +18,8 @@ const resourcesDir = app.isPackaged
   : path.join(import.meta.dirname, '..', 'resources');
 
 let running;
-// Aborted on quit, so closing the window during start-up also stops the servers already started.
+// Aborted when the window closes (or the app quits), so closing the window during start-up stops
+// the servers already started instead of reporting an error.
 const startup = new AbortController();
 let mainWindow;
 let logStream;
@@ -41,6 +42,8 @@ const createWindow = () => {
   });
   // Keep the app's name as the window title, not the page's <title>.
   mainWindow.on('page-title-updated', (event) => event.preventDefault());
+  // 'close', not 'closed': a page still loading fails as soon as the window starts closing.
+  mainWindow.on('close', () => startup.abort());
   const { webContents } = mainWindow;
   webContents.setWindowOpenHandler(({ url }) => {
     openExternally(url);
@@ -80,7 +83,9 @@ const start = async () => {
     });
     await mainWindow.loadURL(running.url);
   } catch (err) {
-    // Closed during start-up: the servers are already stopped.
+    // Closed during start-up, even while the app page was loading (which then fails with
+    // ERR_FAILED): not an error, and the servers are already stopped. An error box here would
+    // keep the app, and its servers, running until someone dismissed it.
     if (startup.signal.aborted) return;
     fail(`${config.name} could not start`, err);
   }
