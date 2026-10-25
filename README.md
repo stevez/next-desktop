@@ -129,7 +129,7 @@ The servers' output goes to `servers.log` in the user-data folder: `%APPDATA%\<n
 Two ways to build the desktop app in GitHub Actions:
 
 - **All packages on public npm:** build directly on a Windows and a Mac runner. The [examples](#examples) do this; copy their `.github/workflows/desktop.yml`, for example from [msw-terrarium-example](https://github.com/stevez/msw-terrarium-example/blob/main/.github/workflows/desktop.yml), and change `APP_NAME` and the build command. It also smoke-tests each app, comments the download links on pull requests and attaches the zips to a release on `v*` tags.
-- **A private registry the Windows and Mac runners can't reach:** [`templates/desktop-app.yml`](https://github.com/stevez/web-terrarium/blob/main/templates/desktop-app.yml) stages on one runner that can reach it (Linux), then packages on Windows and Mac runners with `install-tools`. Copy it to `.github/workflows/` and fill in the `TODO`s.
+- **A private registry the Windows and Mac runners can't reach:** [`templates/desktop-app.yml`](https://github.com/stevez/web-terrarium/blob/main/templates/desktop-app.yml) stages on one runner that can reach it (Linux), then packages on Windows and Mac runners with `install-tools`. It also smoke-tests each app and attaches the zips to a release on `v*` tags. Copy it to `.github/workflows/` and fill in the `TODO`s. Because the stage is built on Linux, `install-tools` swaps in the right native binaries for sharp only; if your server needs another native module (Prisma's query engine, say), build on each system instead.
 
 ## Upgrading from next-desktop
 

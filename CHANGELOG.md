@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- CI template (`templates/desktop-app.yml`):
+  - smoke-tests each packaged app: launches it, waits for `app ready` in `servers.log`, loads the page, quits;
+  - uploads zips as they are (`upload-artifact@v7` with `archive: false`), so a download is the app's zip, not a zip inside a zip;
+  - attaches the zips to a GitHub Release on `v*` tags;
+  - documents that `install-tools` swaps native binaries for sharp only.
+- README: an Examples section with two real apps, and a simpler per-system CI workflow for projects whose packages are all on public npm.
+
 ## 0.1.0
 
 First release as web-terrarium (formerly next-desktop). Packages Next.js apps; other app types follow (see the [roadmap](https://github.com/stevez/web-terrarium/issues/6)).
