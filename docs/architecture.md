@@ -228,7 +228,7 @@ sequenceDiagram
 
 ### 6.2 `startServers` in detail
 
-- **Ports.** The app server has a fixed port (`config.port`, from `appPort(appId)` unless set: an FNV-1a hash of the `appId`, mapped to 20000–29999, below the systems' ephemeral ports). The browser keeps local storage, IndexedDB and cookies per origin, and the origin is `http://127.0.0.1:<port>`, so a random port each launch would throw that data away. `pickPorts` gives the app server its port first, if `portIsFree` says it can be bound. If not (another program, or a clash with another app), it logs why and picks a free one for that launch. Every other server gets a free port: `freePort` listens on `127.0.0.1:0`, reads the port the system assigned, and closes, repeated until all ports differ.
+- **Ports.** `freePort` listens on `127.0.0.1:0`, reads the port the system assigned, and closes. `pickPorts` repeats this until every server has a different port. Nothing uses a fixed port, so other programs on 3000 or 9090 don't matter.
 - **Order.** The extra servers start one at a time in config order, then the app server (the Next server or the static server). Each waits until the one before it answers on its `readyPath`.
 - **Env.** `serverEnv` starts from the user's env without `NODE_OPTIONS`, so a user's `--require` or `--inspect` can't leak into the servers. It adds `ELECTRON_RUN_AS_NODE=1`, then the server's `env` with placeholders filled in. The Next server also gets `NODE_ENV=production`, `NEXT_TELEMETRY_DISABLED=1`, `HOSTNAME=127.0.0.1` and `PORT`.
 - **Placeholders.** `fillTemplate` replaces:
@@ -355,7 +355,8 @@ When you add a setting, keep the two halves apart: build-time settings stay in t
 | --- | --- | --- |
 | Run the unchanged Next standalone server | Static export, custom Electron protocol handlers | Keeps API routes, middleware and server components, and matches the deployed app. |
 | Spawn servers with `ELECTRON_RUN_AS_NODE` | `utilityProcess`, loading servers inside the main process | Plain child processes with their own env and working folder; easy to kill; one log prefix per server; no second Node to ship. |
-| A fixed port for the app server, free ports for extra servers, all on `127.0.0.1` | Random ports for all, or fixed ports for all | The app's origin stays the same, so its browser storage survives a restart. Falling back to a free port when the fixed one is taken means another program never stops the app from starting. |
+| Free ports on `127.0.0.1` | Fixed ports | Never clashes with other programs. |
+| Clear the window's storage at every start | Keep it between launches | The servers behind the app (mocks, in-memory databases) reset on each launch, so stored data would go stale against them; demos always start the same way. Keeping data would need a fixed port too. |
 | A built-in static server for static apps | Electron's `file://` or a custom protocol | A real `http://` origin keeps client-side routing, relative `fetch('/api')`, cookies and the window's security rules the same as for Next.js. |
 | Runtime config as `app.json` data | Bundling `terrarium.config.mjs` into the app | The runtime stays generic and never runs project code, and build-only env stays out of the zip. |
 | One package for Windows and Mac | One per system | The runtime is identical; only a few builder settings differ. |

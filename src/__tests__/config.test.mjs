@@ -2,7 +2,7 @@ import path from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
-import { appPort, guessAppType, resolveConfig, runtimeConfig, stagePaths } from '../config';
+import { guessAppType, resolveConfig, runtimeConfig, stagePaths } from '../config';
 
 const root = path.resolve('project');
 const rootPackage = { version: '1.2.3' };
@@ -22,7 +22,6 @@ describe('resolveConfig', () => {
       outDir: path.join(root, 'dist-desktop'),
       app: { type: 'next', distDir: '.next-terrarium', buildEnv: {}, env: {}, readyPath: '/' },
       servers: [],
-      port: appPort('com.acme.demo'),
       startTimeoutMs: 60000,
       window: { width: 1280, height: 800, loadingText: 'Starting Acme Demo…' },
       errorHint: 'Close other copies of Acme Demo and try again.',
@@ -214,7 +213,6 @@ describe('runtimeConfig', () => {
         dir: 'web',
         entry: 'server.js',
         env: { API_URL: 'http://{host}:{port:mock}' },
-        port: appPort('com.acme.demo'),
         readyPath: '/',
       },
     });
@@ -314,7 +312,6 @@ describe('static apps', () => {
           proxy: { '/api': 'http://{host}:{port:mock}' },
         }),
       },
-      port: appPort('com.acme.demo'),
       readyPath: '/',
     });
   });
@@ -337,30 +334,5 @@ describe('guessAppType', () => {
     expect(resolveConfig(minimal, { root, rootPackage: vite }).app.type).toBe('static');
     expect(resolveConfig({ ...minimal, app: {} }, { root, rootPackage: vite }).app.type).toBe('static');
     expect(resolveConfig({ ...minimal, next: {} }, { root, rootPackage: vite }).app.type).toBe('next');
-  });
-});
-
-describe('port', () => {
-  it('derives a stable port from the appId, below the ephemeral ports', () => {
-    const port = appPort('com.acme.demo');
-
-    expect(appPort('com.acme.demo')).toBe(port);
-    expect(port).toBeGreaterThanOrEqual(20000);
-    expect(port).toBeLessThan(30000);
-    expect(appPort('com.acme.other')).not.toBe(port);
-  });
-
-  it('spreads appIds over the range', () => {
-    const ports = new Set(Array.from({ length: 200 }, (_, i) => appPort(`com.example.app${i}`)));
-
-    expect(ports.size).toBeGreaterThan(190);
-  });
-
-  it('uses the port the config sets', () => {
-    expect(resolve({ ...minimal, port: 4321 }).port).toBe(4321);
-  });
-
-  it.each([[80], [70000], [1.5], ['4321']])('refuses port %j', (port) => {
-    expect(() => resolve({ ...minimal, port })).toThrow('port must be a whole number from 1024 to 65535');
   });
 });

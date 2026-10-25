@@ -6,24 +6,11 @@ export const APP_TYPES = ['next', 'static'];
 const DEFAULT_START_TIMEOUT_MS = 60000;
 // http: readyPath answers 2xx. tcp: the port takes a connection (a database, say).
 const READY_CHECKS = ['http', 'tcp'];
-// The app's port is fixed per app (see appPort), in a range below the systems' ephemeral ports.
-const PORT_RANGE = { first: 20000, size: 10000 };
 
 // True when `dir` is `root` itself or a folder above it, so deleting `dir` would delete the project.
 const containsRoot = (dir, root) => {
   const relative = path.relative(dir, root);
   return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative));
-};
-
-// The browser keeps localStorage, IndexedDB and cookies per origin (http://127.0.0.1:<port>), so
-// the app server gets the same port on every launch: one derived from the appId (FNV-1a), unless
-// the config sets `port`.
-export const appPort = (appId) => {
-  let hash = 0x811c9dc5;
-  [...appId].forEach((char) => {
-    hash = Math.imul(hash ^ char.charCodeAt(0), 0x01000193) >>> 0;
-  });
-  return PORT_RANGE.first + (hash % PORT_RANGE.size);
 };
 
 const resolveServer = (server, root) => {
@@ -121,10 +108,6 @@ export const resolveConfig = (raw, { root, rootPackage }) => {
   if (!Number.isInteger(startTimeoutMs) || startTimeoutMs <= 0) {
     throw new Error(`startTimeoutMs must be a whole number of milliseconds, got "${startTimeoutMs}".`);
   }
-  const port = raw.port ?? appPort(raw.appId);
-  if (!Number.isInteger(port) || port < 1024 || port > 65535) {
-    throw new Error(`port must be a whole number from 1024 to 65535, got "${port}".`);
-  }
   const servers = (raw.servers ?? []).map((server) => resolveServer(server, root));
   const names = servers.map((server) => server.name);
   const duplicate = names.find((name, index) => names.indexOf(name) !== index);
@@ -141,7 +124,6 @@ export const resolveConfig = (raw, { root, rootPackage }) => {
     outDir,
     icon: raw.icon && path.resolve(root, raw.icon),
     app,
-    port,
     servers,
     startTimeoutMs,
     window: { width: 1280, height: 800, loadingText: `Starting ${raw.name}…`, ...raw.window },
@@ -158,7 +140,6 @@ const appServer = (config, appDir) => {
   const base = {
     name: 'app',
     label: 'app server',
-    port: config.port,
     readyPath: config.app.readyPath,
   };
   if (config.app.type === 'static') {

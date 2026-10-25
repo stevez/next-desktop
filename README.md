@@ -122,7 +122,6 @@ Add `--config <file>` to use a config other than `./terrarium.config.mjs`. Error
 | `description` | `name` | |
 | `outDir` | `dist-desktop` | Stage and zips. Deleted at the start of each `stage`, so it must be a folder inside the project, never the project itself. |
 | `icon` | the web app's icon | A PNG (512 x 512 or larger works everywhere), `.ico` (Windows only) or `.icns` (Mac only). If not set, web-terrarium uses the first it finds of `src/app/icon.png`, `app/icon.png`, `public/icon.png`, then `favicon.ico` in `src/app/`, `app/` or `public/`. A Mac app can't use an `.ico`, so it keeps Electron's icon then. |
-| `port` | from `appId` | The app server's port, the same on every launch (from 20000 to 29999, derived from `appId`), so data the app keeps in the browser (local storage, IndexedDB, cookies) survives a restart. If that port is in use, the app picks a free one for that launch and says so in `servers.log`. Set it if two of your apps clash. |
 | `app.type` | guessed | `next` or `static`. If not set: `next` when the project depends on Next.js, `static` when it uses Vite, else `next`. |
 | `app.buildEnv` | `{}` | Env for the build. `NEXT_PUBLIC_*` (Next.js) and `VITE_*` (Vite) values are baked in here. |
 | `app.readyPath` | `/` | Polled until it answers 2xx. |
@@ -146,14 +145,16 @@ Add `--config <file>` to use a config other than `./terrarium.config.mjs`. Error
 | `window` | `1280` x `800` | `{ width, height, loadingText }`. |
 | `errorHint` | "Close other copies…" | Shown when the app can't start. |
 
-Env values and `app.proxy` targets can use `{host}` (always `127.0.0.1`), `{port}` (the server's own port) and `{port:<name>}` (another server's port; the app server is `app`). Extra servers get free ports picked at start-up; the app server gets its fixed `port`.
+Env values and `app.proxy` targets can use `{host}` (always `127.0.0.1`), `{port}` (the server's own port) and `{port:<name>}` (another server's port; the app server is `app`). Ports are picked free at start-up.
 
 ## What the app does at run time
 
-1. Gives the app server its fixed port (or a free one if that's taken) and picks a free port for each extra server.
+1. Picks a free port for each server and for the app server.
 2. Starts each server with Electron's own Node (`ELECTRON_RUN_AS_NODE=1`), in order, and waits until it's ready. Then starts the app server the same way: the Next.js server, or web-terrarium's static server for a static app.
 3. Shows the app in a sandboxed window, titled with the config's `name` (not the page's `<title>`). Links to other sites open in the browser; only `https` links are opened.
 4. Stops every server when the app quits.
+
+Every launch starts fresh: before the app loads, web-terrarium clears what the app saved in its window last time (local storage, IndexedDB, cookies, cache). Apps whose servers reset on each launch (a mock, an in-memory database) can't end up with stale data in the window, and a demo always starts the same way.
 
 The servers' output goes to `servers.log` in the user-data folder: `%APPDATA%\<name>` on Windows, `~/Library/Application Support/<name>` on Mac. Each server logs `[web-terrarium] <server> ready at <url>` once it answers.
 

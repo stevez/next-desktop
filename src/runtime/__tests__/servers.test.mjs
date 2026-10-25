@@ -8,7 +8,6 @@ import {
   fillTemplate,
   freePort,
   LOG_NAME,
-  portIsFree,
   serverEnv,
   startServers,
   waitForHttp,
@@ -47,22 +46,6 @@ describe('freePort', () => {
     };
 
     await expect(freePort({ createServer })).rejects.toThrow('EACCES');
-  });
-});
-
-describe('portIsFree', () => {
-  it('says whether a port can be bound on 127.0.0.1', async () => {
-    const server = net.createServer();
-    await new Promise((resolve) => {
-      server.listen(0, '127.0.0.1', resolve);
-    });
-    const { port } = server.address();
-
-    expect(await portIsFree(port)).toBe(false);
-    await new Promise((resolve) => {
-      server.close(resolve);
-    });
-    expect(await portIsFree(port)).toBe(true);
   });
 });
 
@@ -254,11 +237,7 @@ describe('startServers', () => {
     },
   };
 
-  const setup = ({
-    waitImpl = vi.fn().mockResolvedValue(),
-    ports = [4001, 4002],
-    portFreeImpl = vi.fn().mockResolvedValue(true),
-  } = {}) => {
+  const setup = ({ waitImpl = vi.fn().mockResolvedValue(), ports = [4001, 4002] } = {}) => {
     const children = [];
     const spawnImpl = vi.fn(() => {
       const child = fakeChild();
@@ -276,12 +255,11 @@ describe('startServers', () => {
         baseEnv: {},
         spawnImpl,
         portImpl,
-        portFreeImpl,
         waitImpl,
         onOutput,
         ...extra,
       });
-    return { children, spawnImpl, portImpl, portFreeImpl, onOutput, waitImpl, start };
+    return { children, spawnImpl, portImpl, onOutput, waitImpl, start };
   };
 
   it('starts the servers in order, then the app, and returns the app URL', async () => {
@@ -326,29 +304,6 @@ describe('startServers', () => {
       timeoutMs: undefined,
     });
     expect(onOutput).toHaveBeenCalledWith(LOG_NAME, 'mock ready at tcp://127.0.0.1:4001\n');
-  });
-
-  it('gives the app server its fixed port when it is free, and picks the others', async () => {
-    const { portImpl, portFreeImpl, start } = setup({ ports: [4001] });
-
-    const running = await start({ ...config, app: { ...config.app, port: 23456 } });
-
-    expect(running.url).toBe('http://127.0.0.1:23456/');
-    expect(portFreeImpl).toHaveBeenCalledWith(23456);
-    expect(portImpl).toHaveBeenCalledTimes(1);
-  });
-
-  it('falls back to a free port, and says so, when the fixed port is in use', async () => {
-    const portFreeImpl = vi.fn().mockResolvedValue(false);
-    const { onOutput, start } = setup({ portFreeImpl });
-
-    const running = await start({ ...config, app: { ...config.app, port: 23456 } });
-
-    expect(running.url).toBe('http://127.0.0.1:4002/');
-    expect(onOutput).toHaveBeenCalledWith(
-      LOG_NAME,
-      expect.stringContaining('port 23456 for the app server is in use'),
-    );
   });
 
   it('waits for each server as long as startTimeoutMs allows', async () => {
