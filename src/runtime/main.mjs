@@ -65,6 +65,10 @@ const start = async () => {
   session.defaultSession.setPermissionRequestHandler((_, permission, callback) =>
     callback(isAllowedPermission(permission)),
   );
+  // Every launch starts fresh: nothing the app saved in its window last time (local storage,
+  // IndexedDB, cookies, cache) carries over, so it can't go stale against servers that reset.
+  await session.defaultSession.clearStorageData();
+  await session.defaultSession.clearCache();
   const fail = (title, err) => {
     log(LOG_NAME, `${err.stack}\n`);
     dialog.showErrorBox(title, `${err.message}\n\n${config.errorHint} Details: ${logFile}`);

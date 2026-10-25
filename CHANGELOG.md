@@ -2,7 +2,18 @@
 
 ## Unreleased
 
+### Added
+
+- Static apps (`app.type: 'static'`): React, Vue, Svelte and other apps built with Vite, or any site whose build output is only files. `stage` runs `app.build` (default `npm run build`) and ships `app.dir` (default `dist`). In the desktop app, a static server built into web-terrarium serves it:
+  - correct file types; hashed files cached for good, `index.html` checked on every load;
+  - single-page apps: paths with no file extension that match no file get `index.html` (`app.spa`, default on);
+  - `app.proxy` forwards path prefixes to another server, like Vite's dev proxy, e.g. `{ '/api': 'http://{host}:{port:mock}' }`;
+  - refuses paths that would leave the build output.
+- `app.type` is guessed when it's not set: `next` for projects that depend on Next.js, `static` for Vite projects.
+
 ### Changed
+
+- Every launch starts fresh: the app's window storage (local storage, IndexedDB, cookies, cache) is cleared at start-up. Before, it was only out of reach because the port changed, and it piled up on disk.
 
 - CI template (`templates/desktop-app.yml`):
   - smoke-tests each packaged app: launches it, waits for `app ready` in `servers.log`, loads the page, quits;

@@ -55,8 +55,10 @@ web-terrarium/
                               installTools                                  (I/O)
     runtime/
       main.mjs                Electron entry: window, lifecycle, logging    (I/O, Electron)
-      servers.mjs             freePort, waitForHttp, fillTemplate,
-                              serverEnv, startServers                       (I/O, injectable)
+      servers.mjs             freePort, portIsFree, waitForHttp, waitForTcp,
+                              fillTemplate, serverEnv, startServers         (I/O, injectable)
+      staticServer.mjs        the static app server: createHandler (files,
+                              SPA fallback, proxy), main                    (I/O, injectable)
       window.mjs              loadingPage, isAppUrl, opensExternally,
                               isAllowedPermission                           (pure)
   templates/desktop-app.yml   GitHub Actions template
@@ -142,6 +144,18 @@ Then `stageWeb` copies three things:
 
 Next's standalone output leaves out `static/` and `public/` by design, which is why they're copied separately. `stageWeb` also deletes every `.env*` file from `web` and `web/<appDir>`, because they can hold real endpoints or keys and must never ship. It stops with an error if the build produced no standalone `server.js`. `<appDir>` goes into `app.json`, so the runtime starts `web/<appDir>/server.js`.
 
+**A static app** (`app.type: 'static'`) skips all of that. `stageStatic` runs `app.build` in the project folder with `app.buildEnv`, checks that `app.dir` has an `index.html`, then copies:
+
+- `app.dir` to `resources/web/site`;
+- `src/runtime/staticServer.mjs` to `resources/web/static-server.mjs`.
+
+The packaged app starts `static-server.mjs` like any other server (`runtimeConfig` describes it as the `app` entry), with `WEB_TERRARIUM_STATIC` set to `{ root: 'site', spa, proxy }`. Placeholders in the proxy targets are filled in at start-up like any env value. The static server uses only Node built-ins:
+
+- it maps the URL path into `site/` with `resolveFile`, which refuses anything that would leave it (`..`, an encoded backslash on Windows, a null byte);
+- it serves files with their type, `x-content-type-options: nosniff`, and `cache-control` that caches hashed file names (`index-C1wrO2-t.js`) for good and checks the rest on every load;
+- with `spa`, a GET for a path with no file extension that matches no file gets `index.html`, so client-side routes survive a reload;
+- a path under an `app.proxy` prefix is forwarded, method, path, query, headers and body kept, to the target. That's how a static app reaches an extra server whose port is only known at start-up, without CORS.
+
 `stageElectron` also copies the app's icon next to `main.mjs` as `icon.<ext>` (see `findIcon`: the `icon` option, else Next's `app/icon.png`, else `favicon.ico`). `package` reads its name from `app.json` and gives it to electron-builder for each system that can use that format.
 
 ### 5.3 Bundling extra servers
@@ -215,7 +229,7 @@ sequenceDiagram
 ### 6.2 `startServers` in detail
 
 - **Ports.** `freePort` listens on `127.0.0.1:0`, reads the port the system assigned, and closes. `pickPorts` repeats this until every server has a different port. Nothing uses a fixed port, so other programs on 3000 or 9090 don't matter.
-- **Order.** The extra servers start one at a time in config order, then the Next server. Each waits until the one before it answers on its `readyPath`.
+- **Order.** The extra servers start one at a time in config order, then the app server (the Next server or the static server). Each waits until the one before it answers on its `readyPath`.
 - **Env.** `serverEnv` starts from the user's env without `NODE_OPTIONS`, so a user's `--require` or `--inspect` can't leak into the servers. It adds `ELECTRON_RUN_AS_NODE=1`, then the server's `env` with placeholders filled in. The Next server also gets `NODE_ENV=production`, `NEXT_TELEMETRY_DISABLED=1`, `HOSTNAME=127.0.0.1` and `PORT`.
 - **Placeholders.** `fillTemplate` replaces:
   - `{host}` with `127.0.0.1`;
@@ -342,6 +356,8 @@ When you add a setting, keep the two halves apart: build-time settings stay in t
 | Run the unchanged Next standalone server | Static export, custom Electron protocol handlers | Keeps API routes, middleware and server components, and matches the deployed app. |
 | Spawn servers with `ELECTRON_RUN_AS_NODE` | `utilityProcess`, loading servers inside the main process | Plain child processes with their own env and working folder; easy to kill; one log prefix per server; no second Node to ship. |
 | Free ports on `127.0.0.1` | Fixed ports | Never clashes with other programs. |
+| Clear the window's storage at every start | Keep it between launches | The servers behind the app (mocks, in-memory databases) reset on each launch, so stored data would go stale against them; demos always start the same way. Keeping data would need a fixed port too. |
+| A built-in static server for static apps | Electron's `file://` or a custom protocol | A real `http://` origin keeps client-side routing, relative `fetch('/api')`, cookies and the window's security rules the same as for Next.js. |
 | Runtime config as `app.json` data | Bundling `terrarium.config.mjs` into the app | The runtime stays generic and never runs project code, and build-only env stays out of the zip. |
 | One package for Windows and Mac | One per system | The runtime is identical; only a few builder settings differ. |
 | Zip, unsigned or ad-hoc signed | NSIS, portable, DMG, signed | Needs no certificates, for team-internal use. Signing can be added later (section 11). |
