@@ -8,6 +8,15 @@ It's built for demos and offline tools: the app is unsigned (ad-hoc signed on Ma
 
 How it works inside (modules, build and run-time flow, security, how to extend): [docs/architecture.md](https://github.com/stevez/web-terrarium/blob/main/docs/architecture.md).
 
+## Examples
+
+Two real apps that use web-terrarium. Each has a `terrarium.config.mjs` and a GitHub Actions workflow (`.github/workflows/desktop.yml`) that builds and smoke-tests the Windows and Mac apps on every pull request, comments the download links on it, and attaches the zips to a release on `v*` tags.
+
+| App | What it shows |
+| --- | --- |
+| [msw-terrarium-example](https://github.com/stevez/msw-terrarium-example) | A Next.js todo app plus its [msw-terrarium](https://github.com/stevez/msw-terrarium) mock server as an extra server. The mock gets its port from `{port}`, and the app finds it through `{port:mock}`. |
+| [restaurant-reviews-platform](https://github.com/stevez/restaurant-reviews-platform) | A full-stack Next.js app with Prisma and PostgreSQL. The database runs inside the desktop app as [PGlite](https://pglite.dev) (PostgreSQL in WebAssembly), served by an extra server with `ready: 'tcp'`, so users need no Docker or database. |
+
 ## Set up a project
 
 1. Install web-terrarium as a devDependency. It brings the desktop tools it drives (Electron, electron-builder and esbuild) as its own dependencies, at versions it's tested with, so you don't install them yourself:
@@ -117,7 +126,10 @@ The servers' output goes to `servers.log` in the user-data folder: `%APPDATA%\<n
 
 ## CI
 
-[`templates/desktop-app.yml`](https://github.com/stevez/web-terrarium/blob/main/templates/desktop-app.yml) is a GitHub Actions workflow that stages on one Linux runner and packages on Windows and Mac runners. Copy it to `.github/workflows/` and fill in the `TODO`s.
+Two ways to build the desktop app in GitHub Actions:
+
+- **All packages on public npm:** build directly on a Windows and a Mac runner. The [examples](#examples) do this; copy their `.github/workflows/desktop.yml`, for example from [msw-terrarium-example](https://github.com/stevez/msw-terrarium-example/blob/main/.github/workflows/desktop.yml), and change `APP_NAME` and the build command. It also smoke-tests each app, comments the download links on pull requests and attaches the zips to a release on `v*` tags.
+- **A private registry the Windows and Mac runners can't reach:** [`templates/desktop-app.yml`](https://github.com/stevez/web-terrarium/blob/main/templates/desktop-app.yml) stages on one runner that can reach it (Linux), then packages on Windows and Mac runners with `install-tools`. Copy it to `.github/workflows/` and fill in the `TODO`s.
 
 ## Upgrading from next-desktop
 
