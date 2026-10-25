@@ -1,12 +1,12 @@
 // The file work behind `web-terrarium stage`, `package`, `start` and `install-tools`.
 /* eslint-disable no-console -- command-line tool */
-import { execFileSync, spawn } from 'node:child_process';
+import { execFileSync, execSync, spawn } from 'node:child_process';
 import fs from 'node:fs';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-import { runtimeConfig, stagePaths } from './config.mjs';
+import { runtimeConfig, STATIC_SERVER, STATIC_SITE, stagePaths } from './config.mjs';
 import { builderConfig } from './packageConfig.mjs';
 import {
   electronPackageJson,
@@ -31,10 +31,21 @@ const writeJson = (file, value) => fs.writeFileSync(file, `${JSON.stringify(valu
 const projectRequire = (config) => createRequire(path.join(config.root, 'package.json'));
 // The desktop tools (electron, electron-builder, esbuild) are web-terrarium's own dependencies, so
 // a web project never installs them itself.
+const projectRequireResolves = (config, name) => {
+  try {
+    projectRequire(config).resolve(name);
+    return true;
+  } catch {
+    return false;
+  }
+};
 const ownRequire = createRequire(import.meta.url);
 const importOwn = (name) => import(pathToFileURL(ownRequire.resolve(name)).href);
 
 const buildNext = (config) => {
+  if (!projectRequireResolves(config, 'next/package.json')) {
+    throw new Error('app.type is next, but this project has no next package. Set app.type.');
+  }
   step('Building the Next.js app (desktop mode)');
   execFileSync(process.execPath, [projectRequire(config).resolve('next/dist/bin/next'), 'build'], {
     cwd: config.root,
@@ -83,6 +94,21 @@ const stageWeb = (config, paths) => {
   return appDir;
 };
 
+// A static app: run its build command, then ship the output with web-terrarium's static server.
+const stageStatic = (config, paths) => {
+  const { build, dir, buildEnv } = config.app;
+  step(`Building the web app (${build})`);
+  execSync(build, { cwd: config.root, stdio: 'inherit', env: { ...process.env, ...buildEnv } });
+  if (!fs.existsSync(path.join(dir, 'index.html'))) {
+    throw new Error(
+      `No index.html in ${dir} after "${build}". Set app.dir to the build output folder.`,
+    );
+  }
+  step('Staging the static app');
+  copy(dir, path.join(paths.web, STATIC_SITE));
+  fs.copyFileSync(path.join(RUNTIME_DIR, 'staticServer.mjs'), path.join(paths.web, STATIC_SERVER));
+};
+
 const stageServers = async (config, paths) => {
   if (!config.servers.length) return;
   const { build } = await importOwn('esbuild');
@@ -117,8 +143,13 @@ const stageElectron = (config, paths, { appDir }) => {
 export const stageApp = async (config) => {
   const paths = stagePaths(config);
   fs.rmSync(config.outDir, { recursive: true, force: true });
-  buildNext(config);
-  const appDir = stageWeb(config, paths);
+  let appDir;
+  if (config.app.type === 'static') {
+    stageStatic(config, paths);
+  } else {
+    buildNext(config);
+    appDir = stageWeb(config, paths);
+  }
   await stageServers(config, paths);
   stageElectron(config, paths, { appDir });
 };

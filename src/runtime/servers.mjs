@@ -20,6 +20,17 @@ export const freePort = ({ createServer = net.createServer } = {}) =>
     });
   });
 
+// Whether `port` can be bound on 127.0.0.1 right now.
+export const portIsFree = (port, { createServer = net.createServer } = {}) =>
+  new Promise((resolve) => {
+    const server = createServer();
+    server.unref();
+    server.on('error', () => resolve(false));
+    server.listen(port, HOST, () => {
+      server.close(() => resolve(true));
+    });
+  });
+
 const sleep = (ms) =>
   new Promise((resolve) => {
     setTimeout(resolve, ms);
@@ -99,12 +110,29 @@ export const serverEnv = ({ server, ports, baseEnv, isApp = false }) => {
   return env;
 };
 
-const pickPorts = async (names, portImpl) => {
+// A port for each server, all different. A server with a `port` (the app server: a fixed port
+// keeps the browser's storage between launches) gets it if it's free, before the others pick.
+const pickPorts = async (servers, { portImpl, portFreeImpl, onOutput }) => {
   const ports = {};
   const taken = new Set();
+  const preferred = servers.filter((server) => server.port);
   // Sequential on purpose: each pick has to differ from the ones before.
   // eslint-disable-next-line no-restricted-syntax
-  for (const name of names) {
+  for (const server of preferred) {
+    // eslint-disable-next-line no-await-in-loop
+    if (await portFreeImpl(server.port)) {
+      taken.add(server.port);
+      ports[server.name] = server.port;
+    } else {
+      onOutput(
+        LOG_NAME,
+        `port ${server.port} for the ${server.label} is in use; using another, so data the app ` +
+          'saved in the browser (local storage, cookies) is not available this time\n',
+      );
+    }
+  }
+  // eslint-disable-next-line no-restricted-syntax
+  for (const server of servers.filter((s) => !(s.name in ports))) {
     // eslint-disable-next-line no-await-in-loop
     let port = await portImpl();
     while (taken.has(port)) {
@@ -112,7 +140,7 @@ const pickPorts = async (names, portImpl) => {
       port = await portImpl();
     }
     taken.add(port);
-    ports[name] = port;
+    ports[server.name] = port;
   }
   return ports;
 };
@@ -133,6 +161,7 @@ export const startServers = async ({
   signal,
   spawnImpl = spawn,
   portImpl = freePort,
+  portFreeImpl = portIsFree,
   waitImpl = waitUntilReady,
 }) => {
   const children = [];
@@ -157,10 +186,7 @@ export const startServers = async ({
   });
 
   const all = [...config.servers, config.app];
-  const ports = await pickPorts(
-    all.map((server) => server.name),
-    portImpl,
-  );
+  const ports = await pickPorts(all, { portImpl, portFreeImpl, onOutput });
 
   const run = (server) => {
     const cwd = path.join(resourcesDir, server.dir);

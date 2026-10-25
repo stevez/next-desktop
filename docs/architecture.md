@@ -55,8 +55,10 @@ web-terrarium/
                               installTools                                  (I/O)
     runtime/
       main.mjs                Electron entry: window, lifecycle, logging    (I/O, Electron)
-      servers.mjs             freePort, waitForHttp, fillTemplate,
-                              serverEnv, startServers                       (I/O, injectable)
+      servers.mjs             freePort, portIsFree, waitForHttp, waitForTcp,
+                              fillTemplate, serverEnv, startServers         (I/O, injectable)
+      staticServer.mjs        the static app server: createHandler (files,
+                              SPA fallback, proxy), main                    (I/O, injectable)
       window.mjs              loadingPage, isAppUrl, opensExternally,
                               isAllowedPermission                           (pure)
   templates/desktop-app.yml   GitHub Actions template
@@ -142,6 +144,18 @@ Then `stageWeb` copies three things:
 
 Next's standalone output leaves out `static/` and `public/` by design, which is why they're copied separately. `stageWeb` also deletes every `.env*` file from `web` and `web/<appDir>`, because they can hold real endpoints or keys and must never ship. It stops with an error if the build produced no standalone `server.js`. `<appDir>` goes into `app.json`, so the runtime starts `web/<appDir>/server.js`.
 
+**A static app** (`app.type: 'static'`) skips all of that. `stageStatic` runs `app.build` in the project folder with `app.buildEnv`, checks that `app.dir` has an `index.html`, then copies:
+
+- `app.dir` to `resources/web/site`;
+- `src/runtime/staticServer.mjs` to `resources/web/static-server.mjs`.
+
+The packaged app starts `static-server.mjs` like any other server (`runtimeConfig` describes it as the `app` entry), with `WEB_TERRARIUM_STATIC` set to `{ root: 'site', spa, proxy }`. Placeholders in the proxy targets are filled in at start-up like any env value. The static server uses only Node built-ins:
+
+- it maps the URL path into `site/` with `resolveFile`, which refuses anything that would leave it (`..`, an encoded backslash on Windows, a null byte);
+- it serves files with their type, `x-content-type-options: nosniff`, and `cache-control` that caches hashed file names (`index-C1wrO2-t.js`) for good and checks the rest on every load;
+- with `spa`, a GET for a path with no file extension that matches no file gets `index.html`, so client-side routes survive a reload;
+- a path under an `app.proxy` prefix is forwarded, method, path, query, headers and body kept, to the target. That's how a static app reaches an extra server whose port is only known at start-up, without CORS.
+
 `stageElectron` also copies the app's icon next to `main.mjs` as `icon.<ext>` (see `findIcon`: the `icon` option, else Next's `app/icon.png`, else `favicon.ico`). `package` reads its name from `app.json` and gives it to electron-builder for each system that can use that format.
 
 ### 5.3 Bundling extra servers
@@ -214,8 +228,8 @@ sequenceDiagram
 
 ### 6.2 `startServers` in detail
 
-- **Ports.** `freePort` listens on `127.0.0.1:0`, reads the port the system assigned, and closes. `pickPorts` repeats this until every server has a different port. Nothing uses a fixed port, so other programs on 3000 or 9090 don't matter.
-- **Order.** The extra servers start one at a time in config order, then the Next server. Each waits until the one before it answers on its `readyPath`.
+- **Ports.** The app server has a fixed port (`config.port`, from `appPort(appId)` unless set: an FNV-1a hash of the `appId`, mapped to 20000–29999, below the systems' ephemeral ports). The browser keeps local storage, IndexedDB and cookies per origin, and the origin is `http://127.0.0.1:<port>`, so a random port each launch would throw that data away. `pickPorts` gives the app server its port first, if `portIsFree` says it can be bound. If not (another program, or a clash with another app), it logs why and picks a free one for that launch. Every other server gets a free port: `freePort` listens on `127.0.0.1:0`, reads the port the system assigned, and closes, repeated until all ports differ.
+- **Order.** The extra servers start one at a time in config order, then the app server (the Next server or the static server). Each waits until the one before it answers on its `readyPath`.
 - **Env.** `serverEnv` starts from the user's env without `NODE_OPTIONS`, so a user's `--require` or `--inspect` can't leak into the servers. It adds `ELECTRON_RUN_AS_NODE=1`, then the server's `env` with placeholders filled in. The Next server also gets `NODE_ENV=production`, `NEXT_TELEMETRY_DISABLED=1`, `HOSTNAME=127.0.0.1` and `PORT`.
 - **Placeholders.** `fillTemplate` replaces:
   - `{host}` with `127.0.0.1`;
@@ -341,7 +355,8 @@ When you add a setting, keep the two halves apart: build-time settings stay in t
 | --- | --- | --- |
 | Run the unchanged Next standalone server | Static export, custom Electron protocol handlers | Keeps API routes, middleware and server components, and matches the deployed app. |
 | Spawn servers with `ELECTRON_RUN_AS_NODE` | `utilityProcess`, loading servers inside the main process | Plain child processes with their own env and working folder; easy to kill; one log prefix per server; no second Node to ship. |
-| Free ports on `127.0.0.1` | Fixed ports | Never clashes with other programs. |
+| A fixed port for the app server, free ports for extra servers, all on `127.0.0.1` | Random ports for all, or fixed ports for all | The app's origin stays the same, so its browser storage survives a restart. Falling back to a free port when the fixed one is taken means another program never stops the app from starting. |
+| A built-in static server for static apps | Electron's `file://` or a custom protocol | A real `http://` origin keeps client-side routing, relative `fetch('/api')`, cookies and the window's security rules the same as for Next.js. |
 | Runtime config as `app.json` data | Bundling `terrarium.config.mjs` into the app | The runtime stays generic and never runs project code, and build-only env stays out of the zip. |
 | One package for Windows and Mac | One per system | The runtime is identical; only a few builder settings differ. |
 | Zip, unsigned or ad-hoc signed | NSIS, portable, DMG, signed | Needs no certificates, for team-internal use. Signing can be added later (section 11). |

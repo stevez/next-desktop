@@ -2,7 +2,7 @@ import path from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
-import { resolveConfig, runtimeConfig, stagePaths } from '../config';
+import { appPort, guessAppType, resolveConfig, runtimeConfig, stagePaths } from '../config';
 
 const root = path.resolve('project');
 const rootPackage = { version: '1.2.3' };
@@ -22,6 +22,7 @@ describe('resolveConfig', () => {
       outDir: path.join(root, 'dist-desktop'),
       app: { type: 'next', distDir: '.next-terrarium', buildEnv: {}, env: {}, readyPath: '/' },
       servers: [],
+      port: appPort('com.acme.demo'),
       startTimeoutMs: 60000,
       window: { width: 1280, height: 800, loadingText: 'Starting Acme Demo…' },
       errorHint: 'Close other copies of Acme Demo and try again.',
@@ -144,8 +145,7 @@ describe('resolveConfig', () => {
     [{ ...minimal, next: { distDir: '.next/' } }, 'must not be .next'],
     [{ ...minimal, next: { distDir: 'build/../.next' } }, 'must not be .next'],
     [{ ...minimal, app: { type: 'next' }, next: {} }, 'Use app or next in the config, not both'],
-    [{ ...minimal, app: { type: 'rails' } }, 'app.type must be one of next, got "rails"'],
-    [{ ...minimal, app: {} }, 'app.type must be one of next, got "undefined"'],
+    [{ ...minimal, app: { type: 'rails' } }, 'app.type must be one of next, static, got "rails"'],
     [{ ...minimal, outDir: '.' }, 'outDir must be a folder inside the project, got "."'],
     [{ ...minimal, outDir: './' }, 'outDir must be a folder inside the project'],
     [{ ...minimal, outDir: '..' }, 'outDir must be a folder inside the project'],
@@ -214,6 +214,7 @@ describe('runtimeConfig', () => {
         dir: 'web',
         entry: 'server.js',
         env: { API_URL: 'http://{host}:{port:mock}' },
+        port: appPort('com.acme.demo'),
         readyPath: '/',
       },
     });
@@ -249,5 +250,117 @@ describe('stagePaths', () => {
       servers: path.join(out, 'resources', 'servers'),
       packaged: path.join(out, 'out'),
     });
+  });
+});
+
+describe('static apps', () => {
+  const staticApp = (app) => resolve({ ...minimal, app: { type: 'static', ...app } });
+
+  it('fills in defaults: npm run build, dist, single-page app, no proxy', () => {
+    expect(staticApp({}).app).toEqual({
+      type: 'static',
+      build: 'npm run build',
+      dir: path.join(root, 'dist'),
+      spa: true,
+      proxy: {},
+      buildEnv: {},
+      readyPath: '/',
+    });
+  });
+
+  it('keeps the values a project sets', () => {
+    const app = staticApp({
+      build: 'pnpm build',
+      dir: 'build/web',
+      spa: false,
+      proxy: { '/api': 'http://{host}:{port:mock}' },
+      buildEnv: { VITE_MODE: 'demo' },
+      readyPath: '/health.txt',
+    }).app;
+
+    expect(app).toEqual({
+      type: 'static',
+      build: 'pnpm build',
+      dir: path.join(root, 'build', 'web'),
+      spa: false,
+      proxy: { '/api': 'http://{host}:{port:mock}' },
+      buildEnv: { VITE_MODE: 'demo' },
+      readyPath: '/health.txt',
+    });
+  });
+
+  it.each([
+    [{ dir: '.' }, 'app.dir must be the build output folder inside the project, got "."'],
+    [{ dir: '..' }, 'app.dir must be the build output folder inside the project'],
+    [{ proxy: { api: 'http://{host}:{port:mock}' } }, 'app.proxy paths must start with /, got "api"'],
+    [{ proxy: { '/api': 'https://example.com' } }, 'app.proxy["/api"] must be an http:// URL, got "https://example.com"'],
+    [{ proxy: { '/api': 5 } }, 'must be an http:// URL, got "5"'],
+  ])('refuses a bad static config %#', (app, message) => {
+    expect(() => staticApp(app)).toThrow(message);
+  });
+
+  it('runs the static server from web/, with the site and the proxy in its env', () => {
+    const config = staticApp({ spa: false, proxy: { '/api': 'http://{host}:{port:mock}' } });
+
+    expect(runtimeConfig(config).app).toEqual({
+      name: 'app',
+      label: 'app server',
+      dir: 'web',
+      entry: 'static-server.mjs',
+      env: {
+        WEB_TERRARIUM_STATIC: JSON.stringify({
+          root: 'site',
+          spa: false,
+          proxy: { '/api': 'http://{host}:{port:mock}' },
+        }),
+      },
+      port: appPort('com.acme.demo'),
+      readyPath: '/',
+    });
+  });
+});
+
+describe('guessAppType', () => {
+  it.each([
+    [{ dependencies: { next: '^15' } }, 'next'],
+    [{ dependencies: { next: '^15' }, devDependencies: { vite: '^7' } }, 'next'],
+    [{ devDependencies: { vite: '^7' } }, 'static'],
+    [{ dependencies: { react: '^19' } }, 'next'],
+    [{}, 'next'],
+  ])('reads %j as %s', (rootPackage, type) => {
+    expect(guessAppType(rootPackage)).toBe(type);
+  });
+
+  it('guesses when the config sets no app type', () => {
+    const vite = { version: '1.0.0', devDependencies: { vite: '^7' } };
+
+    expect(resolveConfig(minimal, { root, rootPackage: vite }).app.type).toBe('static');
+    expect(resolveConfig({ ...minimal, app: {} }, { root, rootPackage: vite }).app.type).toBe('static');
+    expect(resolveConfig({ ...minimal, next: {} }, { root, rootPackage: vite }).app.type).toBe('next');
+  });
+});
+
+describe('port', () => {
+  it('derives a stable port from the appId, below the ephemeral ports', () => {
+    const port = appPort('com.acme.demo');
+
+    expect(appPort('com.acme.demo')).toBe(port);
+    expect(port).toBeGreaterThanOrEqual(20000);
+    expect(port).toBeLessThan(30000);
+    expect(appPort('com.acme.other')).not.toBe(port);
+  });
+
+  it('spreads appIds over the range', () => {
+    const ports = new Set(Array.from({ length: 200 }, (_, i) => appPort(`com.example.app${i}`)));
+
+    expect(ports.size).toBeGreaterThan(190);
+  });
+
+  it('uses the port the config sets', () => {
+    expect(resolve({ ...minimal, port: 4321 }).port).toBe(4321);
+  });
+
+  it.each([[80], [70000], [1.5], ['4321']])('refuses port %j', (port) => {
+    expect(() => resolve({ ...minimal, port })).toThrow('port must be a whole number from 1024 to 65535');
   });
 });
