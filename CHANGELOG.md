@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.2.0
 
 ### Added
 
@@ -14,13 +14,12 @@
 ### Changed
 
 - Every launch starts fresh: the app's window storage (local storage, IndexedDB, cookies, cache) is cleared at start-up. Before, it was only out of reach because the port changed, and it piled up on disk.
-
 - CI template (`templates/desktop-app.yml`):
   - smoke-tests each packaged app: launches it, waits for `app ready` in `servers.log`, loads the page, quits;
   - uploads zips as they are (`upload-artifact@v7` with `archive: false`), so a download is the app's zip, not a zip inside a zip;
   - attaches the zips to a GitHub Release on `v*` tags;
   - documents that `install-tools` swaps native binaries for sharp only.
-- README: an Examples section with two real apps, and a simpler per-system CI workflow for projects whose packages are all on public npm.
+- README: an Examples section with three real apps (two Next.js, one static), and a simpler per-system CI workflow for projects whose packages are all on public npm.
 
 ## 0.1.0
 
