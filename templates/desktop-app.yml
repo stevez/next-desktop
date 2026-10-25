@@ -2,25 +2,33 @@ name: Desktop app (Windows and Mac)
 
 # Template from web-terrarium. Copy to .github/workflows/ and fill in the TODOs.
 #
-# Stages the web app once on Linux, then packages it on a Windows and a macOS runner and uploads
-# the zips. If your Linux runner can reach every package but the OS runners can't (a private
-# registry, say), keep install-tools; otherwise you can replace it with `npm ci` and run
-# `npx web-terrarium package`.
+# For projects whose packages come from a private registry that GitHub's Windows and macOS
+# runners can't reach. It stages the web app once on a runner that can reach the registry
+# (Linux), then packages it on a Windows and a macOS runner with `install-tools`, smoke-tests
+# each app and uploads the zips. On a v* tag it also attaches them to that tag's GitHub Release.
+#
+# If every package is on public npm, building directly on each system is simpler: see the
+# workflow in web-terrarium's examples (README, "CI").
+#
+# Native modules: the stage is built on Linux, so the web server's native modules are Linux
+# builds. install-tools swaps in the right ones for sharp only. If the server needs another
+# native module (Prisma's query engine, say), build on each system instead.
 on:
   workflow_dispatch:
+  push:
+    tags: ['v*']
 
 permissions:
-  contents: read
+  contents: write # to attach the zips to a release on v* tags
 
 env:
   APP_NAME: Acme Demo # TODO: `name` in terrarium.config.mjs
-  ARTIFACT: Acme-Demo # TODO: `artifactName` in terrarium.config.mjs
   OUT_DIR: dist-desktop # TODO: `outDir` in terrarium.config.mjs
-  # TODO: the web-terrarium version in your package-lock.json. The package job runs it from public
+  # TODO: the web-terrarium version in your package-lock.json. The package jobs run it from public
   # npm before anything is installed, to install the packaging tools.
   WEB_TERRARIUM_VERSION: 0.1.0
-  # Packaging downloads the Electron it packs itself; the 100 MB runtime from `npm install` (for
-  # `web-terrarium start`) isn't needed in CI.
+  # Packaging downloads the Electron it packs; the runtime `npm install` would download isn't
+  # needed in CI.
   ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
 
 jobs:
@@ -38,10 +46,10 @@ jobs:
       - run: npx web-terrarium stage
       # A tarball keeps file modes and symlinks, which upload-artifact drops.
       - run: tar -czf desktop-stage.tgz "$OUT_DIR"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
-          name: desktop-stage
           path: desktop-stage.tgz
+          archive: false
           if-no-files-found: error
           retention-days: 1
 
@@ -64,9 +72,10 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - uses: actions/download-artifact@v4
+      # v8 downloads the unzipped upload (archive: false above) as it is.
+      - uses: actions/download-artifact@v8
         with:
-          name: desktop-stage
+          name: desktop-stage.tgz
       - run: tar -xzf desktop-stage.tgz && rm desktop-stage.tgz
       # Installs web-terrarium and sharp into ./node_modules at the versions and integrity hashes in
       # package-lock.json, so the next step runs the audited copy, not the one npx fetched.
@@ -77,13 +86,56 @@ jobs:
         env:
           # The Mac app is ad-hoc signed (no certificate); electron-builder skips that on PRs otherwise.
           CSC_FOR_PULL_REQUEST: 'true'
-      # TODO: add a smoke test. The app logs "[web-terrarium] app ready at <url>" to servers.log in
-      # %APPDATA%\$APP_NAME (Windows) or ~/Library/Application Support/$APP_NAME (Mac).
-      # Write one for each system: launch the app, check the page, close it, check the servers stopped.
-      - uses: actions/upload-artifact@v4
+      - name: Find the zip
+        id: zip
+        run: echo "path=$(ls "$OUT_DIR"/out/*-${{ matrix.suffix }}.zip)" >> "$GITHUB_OUTPUT"
+      # Unzip, launch, wait for "[web-terrarium] app ready at <url>" in servers.log, load the page,
+      # then quit. A smoke test that starts the servers your app needs is enough to catch a broken
+      # build; add your own checks after the curl if you like.
+      - name: Smoke test
+        run: |
+          app="$RUNNER_TEMP/app"
+          mkdir -p "$app"
+          if [ "${{ matrix.suffix }}" = win ]; then
+            # Git Bash's tar can't read zips; its unzip can.
+            unzip -q "${{ steps.zip.outputs.path }}" -d "$app"
+            log="$APPDATA/$APP_NAME/servers.log"
+            "$app/$APP_NAME.exe" &
+          else
+            # ditto keeps the .app bundle's symlinks and file modes.
+            ditto -x -k "${{ steps.zip.outputs.path }}" "$app"
+            log="$HOME/Library/Application Support/$APP_NAME/servers.log"
+            "$app/$APP_NAME.app/Contents/MacOS/$APP_NAME" &
+          fi
+          for _ in $(seq 1 90); do
+            grep -qE 'app ready at|exit code' "$log" 2>/dev/null && break
+            sleep 1
+          done
+          cat "$log" || true
+          url=$(grep -o 'app ready at http://[0-9.:]*' "$log" | sed 's/app ready at //')
+          test -n "$url" || { echo "::error::The app did not start"; exit 1; }
+          curl -fsS -o /dev/null "$url/"
+          echo "The app answered at $url"
+          if [ "${{ matrix.suffix }}" = win ]; then
+            taskkill //IM "$APP_NAME.exe" //T //F
+          else
+            pkill -f "$APP_NAME.app/Contents/MacOS" || true
+          fi
+      # archive: false uploads the zip as it is, so the download is the app's zip itself, not a zip
+      # inside GitHub's own zip.
+      - uses: actions/upload-artifact@v7
         with:
-          name: desktop-${{ matrix.suffix }}
-          path: ${{ env.OUT_DIR }}/out/${{ env.ARTIFACT }}-*-${{ matrix.suffix }}.zip
+          path: ${{ steps.zip.outputs.path }}
+          archive: false
           if-no-files-found: error
-          compression-level: 0
           retention-days: 30 # TODO: how long GitHub keeps the zips (default 90)
+      - name: Attach to the release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # The first of the two jobs creates the release; both upload their zip.
+          gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 ||
+            gh release create "$GITHUB_REF_NAME" --verify-tag --generate-notes ||
+            gh release view "$GITHUB_REF_NAME" >/dev/null
+          gh release upload "$GITHUB_REF_NAME" "${{ steps.zip.outputs.path }}" --clobber
