@@ -111,7 +111,7 @@ sequenceDiagram
   B->>B: delete outDir
   B->>Next: next build (env = buildEnv + WEB_TERRARIUM_DIST_DIR)
   Next-->>B: <distDir>/standalone, <distDir>/static
-  B->>B: stageWeb: copy standalone, static, public → resources/web; delete .env*
+  B->>B: stageWeb: copy standalone, static, public to resources/web, delete .env files
   loop each extra server
     B->>ES: bundle entry → resources/servers/<name>/server.mjs
     B->>B: copy the server's copy[] files beside the bundle
@@ -119,7 +119,7 @@ sequenceDiagram
   B->>B: stageElectron: copy runtime/*.mjs, write package.json + app.json → stage/
   CLI->>B: packageApp(config, target)
   B->>EB: build(zip target, builderConfig)
-  EB->>EB: pack stage/ → app.asar; copy servers/ as extraResources
+  EB->>EB: pack stage/ into app.asar, copy servers/ as extraResources
   EB->>B: afterPack: copy resources/web → <Resources>/web
   EB-->>B: out/<artifactName>-<version>-win|mac.zip
 ```
@@ -197,7 +197,7 @@ sequenceDiagram
   participant X as extra server(s)
   participant N as Next server
   E->>E: requestSingleInstanceLock (else quit)
-  E->>E: read app.json; open servers.log; set permission handler
+  E->>E: read app.json, open servers.log, set permission handler
   E->>W: create window, show the loading page
   E->>S: startServers(config, resourcesDir, execPath, env)
   S->>S: pick a free 127.0.0.1 port per server (all different)
@@ -208,7 +208,7 @@ sequenceDiagram
   end
   S->>N: spawn execPath web/server.js (PORT, HOSTNAME=127.0.0.1, NODE_ENV=production)
   S->>N: poll readyPath until 2xx
-  S-->>E: { url, stop }
+  S-->>E: url and stop()
   E->>W: loadURL(url)
 ```
 
