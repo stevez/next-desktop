@@ -45,7 +45,9 @@ export const cacheControl = (relativePath) =>
   HASHED.test(path.basename(relativePath)) ? 'public, max-age=31536000, immutable' : 'no-cache';
 
 // The file a URL path points to inside `root`, or null if it would leave `root` or can't be read.
-export const resolveFile = (root, urlPath) => {
+// `pathImpl` is the platform's path rules; on Windows a decoded backslash is a separator too, so
+// tests pass path.win32 to check that case on every system.
+export const resolveFile = (root, urlPath, pathImpl = path) => {
   let decoded;
   try {
     decoded = decodeURIComponent(urlPath);
@@ -53,8 +55,8 @@ export const resolveFile = (root, urlPath) => {
     return null;
   }
   if (decoded.includes('\0')) return null;
-  const file = path.resolve(root, `.${path.posix.normalize(`/${decoded}`)}`);
-  if (file !== root && !file.startsWith(`${root}${path.sep}`)) return null;
+  const file = pathImpl.resolve(root, `.${path.posix.normalize(`/${decoded}`)}`);
+  if (file !== root && !file.startsWith(`${root}${pathImpl.sep}`)) return null;
   return file;
 };
 

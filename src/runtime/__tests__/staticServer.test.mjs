@@ -59,8 +59,13 @@ describe('resolveFile', () => {
   it('refuses paths that would leave the root or cannot be decoded', () => {
     expect(resolveFile(root, '/%E0%A4%A')).toBeNull();
     expect(resolveFile(root, '/a%00b')).toBeNull();
-    // A backslash is a separator on Windows, so ..\ could step out of the root there.
-    if (path.sep === '\\') expect(resolveFile(root, '/..%5C..%5Cwin.ini')).toBeNull();
+  });
+
+  it('refuses an encoded ..\\ under Windows path rules, where a backslash is a separator', () => {
+    const windowsRoot = 'C:\\app\\site';
+
+    expect(resolveFile(windowsRoot, '/..%5C..%5Cwin.ini', path.win32)).toBeNull();
+    expect(resolveFile(windowsRoot, '/a%5Cb.txt', path.win32)).toBe('C:\\app\\site\\a\\b.txt');
   });
 });
 
