@@ -1,12 +1,15 @@
 How long does it take for your product owner to try a new feature?
+
 Often a day or more: the branch waits for a test environment, a backend, a database with test data. Or they watch a screen share instead of clicking through it themselves.
 
 So I tried something simpler: send them the app.
+
 I built web-terrarium, an open-source tool that packages a web app (Next.js or Vite), backend and database included, into a Windows or Mac desktop app. It runs your unchanged web server inside Electron, on the laptop itself. The business person unzips it, double-clicks, and tries the feature with demo data. No deployment, no server, no Docker.
 
 The example in the article is a full-stack Next.js app with Prisma and PostgreSQL. In the desktop app, PostgreSQL runs inside the app itself (PGlite, PostgreSQL compiled to WebAssembly), seeded fresh on every launch.
 
 Write-up, with how it works: https://dev.to/stevez/turn-your-web-app-into-a-desktop-app-for-demos-1oe8
+
 Code: https://github.com/stevez/web-terrarium
 
 How does your team get feedback on work in progress?
