@@ -13,6 +13,8 @@ It packages two kinds of web app:
 
 > **Status:** Express and other Node servers (`node`) are planned: see the [roadmap](https://github.com/stevez/web-terrarium/issues/6). web-terrarium was called next-desktop; see [Upgrading from next-desktop](#upgrading-from-next-desktop).
 
+A walkthrough with a full-stack example (Next.js, Prisma and PostgreSQL inside the app): [Turn your web app into a desktop app for demos](https://dev.to/stevez/turn-your-web-app-into-a-desktop-app-for-demos-1oe8) on dev.to.
+
 How it works inside (modules, build and run-time flow, security, how to extend): [docs/architecture.md](https://github.com/stevez/web-terrarium/blob/main/docs/architecture.md).
 
 ## Examples
