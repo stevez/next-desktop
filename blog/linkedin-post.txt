@@ -1,17 +1,24 @@
-How long does it take for your product owner to try a new feature?
-⠀
-Often a day or more: the branch waits for a test environment, a backend, a database with test data. Or they watch a screen share instead of clicking through it themselves.
-⠀
-So I tried something simpler: send them the app.
-⠀
-I built web-terrarium, an open-source tool that packages a web app (Next.js or Vite), backend and database included, into a Windows or Mac desktop app. It runs your unchanged web server inside Electron, on the laptop itself. The business person unzips it, double-clicks, and tries the feature with demo data. No deployment, no server, no Docker.
-⠀
-The example in the article is a full-stack Next.js app with Prisma and PostgreSQL. In the desktop app, PostgreSQL runs inside the app itself (PGlite, PostgreSQL compiled to WebAssembly), seeded fresh on every launch.
-⠀
-Write-up, with how it works: https://dev.to/stevez/turn-your-web-app-into-a-desktop-app-for-demos-1oe8
-⠀
-Code: https://github.com/stevez/web-terrarium
-⠀
-How does your team get feedback on work in progress?
-⠀
-#webdevelopment #nextjs #electron #react #developerexperience
+I built a tool that turns a web app into a desktop app for demos — backend and database included.
+
+The problem: when a product owner wants to try a new feature, they wait for a deployment. The branch needs a test environment, a working backend, a database with test data. Feedback that could take five minutes takes a day.
+
+The solution: send them the app. They unzip it, double-click, and try the feature on their own laptop. No deployment, no server, no Docker.
+
+How web-terrarium does it:
+
+Unchanged web server — your Next.js server (or a Vite app's build) runs inside Electron, on 127.0.0.1. The same build you'd deploy, just on a laptop.
+
+Extra servers — a mock API or a database starts next to it. Ports are picked at start-up, and placeholders like {port:db} wire them together.
+
+PostgreSQL inside the app — the example is a full-stack Next.js app with Prisma. Its database runs in the app as PGlite (PostgreSQL compiled to WebAssembly), seeded fresh on every launch.
+
+Safe to hand out — servers only listen on 127.0.0.1, the window is sandboxed, and .env files never ship.
+
+Builds in CI — a GitHub Actions workflow builds the Windows and Mac apps on every pull request and comments the download links.
+
+Try it:
+npm: https://www.npmjs.com/package/web-terrarium
+Full writeup: https://dev.to/stevez/turn-your-web-app-into-a-desktop-app-for-demos-1oe8
+GitHub: https://github.com/stevez/web-terrarium
+
+#electron #nextjs #react #vite #webdev #javascript #opensource #nodejs #postgresql
