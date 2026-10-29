@@ -160,7 +160,7 @@ Every launch starts fresh: before the app loads, web-terrarium clears what the a
 
 The app's menu has two items of its own, next to the standard Edit, View and Window menus. On Windows they're in the menu bar above the page (File and Help); on a Mac, in the app menu.
 
-- **About** shows which build this is: the version, the git branch and commit it was built from, and when. When feedback comes in a week later, you know which build it was about. `stage` reads them from git; on GitHub Actions the branch comes from the workflow (the PR's branch, or the pushed branch or tag).
+- **About** shows which build this is: the version, the git branch and commit it was built from, and when. **Copy** puts that on the clipboard. When feedback comes in a week later, you know which build it was about. `stage` reads them from git; on GitHub Actions the branch comes from the workflow (the PR's branch, or the pushed branch or tag).
 - **Reset Demo Data** restarts the app after asking. Since every launch starts fresh, it comes back with the original data.
 
 The servers' output goes to `servers.log` in the user-data folder: `%APPDATA%\<name>` on Windows, `~/Library/Application Support/<name>` on Mac. Each server logs `[web-terrarium] <server> ready at <url>` once it answers.

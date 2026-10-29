@@ -4,7 +4,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { app, BrowserWindow, dialog, Menu, session, shell } from 'electron';
+import { app, BrowserWindow, clipboard, dialog, Menu, session, shell } from 'electron';
 
 import { LOG_NAME, startServers } from './servers.mjs';
 import {
@@ -37,13 +37,21 @@ const openExternally = (url) => {
   if (opensExternally(url)) shell.openExternal(url);
 };
 
-const showAbout = () =>
-  dialog.showMessageBox(mainWindow, {
+// A message box's text can't be selected on Windows, so Copy puts it on the clipboard for a
+// feedback message.
+const showAbout = async () => {
+  const detail = aboutDetail(config.build);
+  const { response } = await dialog.showMessageBox(mainWindow, {
     type: 'info',
     title: `About ${config.name}`,
     message: config.name,
-    detail: aboutDetail(config.build),
+    detail,
+    buttons: ['OK', 'Copy'],
+    defaultId: 0,
+    cancelId: 0,
   });
+  if (response === 1) clipboard.writeText(`${config.name}\n${detail}`);
+};
 
 // Every launch starts from the servers' seed data with empty storage (see start), so resetting is
 // a restart.
