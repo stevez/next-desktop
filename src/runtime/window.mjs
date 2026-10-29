@@ -17,3 +17,52 @@ export const isAppUrl = (url, appUrl) =>
 export const opensExternally = (url) => url.startsWith('https://');
 
 export const isAllowedPermission = (permission) => ALLOWED_PERMISSIONS.has(permission);
+
+// The About box's text: the version, the branch and commit it was built from, and when.
+export const aboutDetail = (build = {}) => {
+  const source = [build.branch, build.commit].filter(Boolean).join('@');
+  return [
+    build.version && `Version ${build.version}`,
+    source && `Built from ${source}`,
+    build.builtAt && `Built on ${build.builtAt.slice(0, 16).replace('T', ' ')} UTC`,
+  ]
+    .filter(Boolean)
+    .join('\n');
+};
+
+const separator = { type: 'separator' };
+
+// The app's menu: Electron's standard menus, so copy, paste, zoom and reload keep working (on a
+// Mac, Cmd+C and Cmd+V need the Edit menu), plus About and Reset Demo Data. The menu bar is always
+// shown, so people can find them.
+export const menuTemplate = ({ name, isMac, onAbout, onReset }) => {
+  const about = { label: `About ${name}`, click: onAbout };
+  const reset = { label: 'Reset Demo Data…', click: onReset };
+  const standard = [{ role: 'editMenu' }, { role: 'viewMenu' }, { role: 'windowMenu' }];
+  if (isMac) {
+    return [
+      {
+        label: name,
+        submenu: [
+          about,
+          separator,
+          reset,
+          separator,
+          { role: 'services' },
+          separator,
+          { role: 'hide' },
+          { role: 'hideOthers' },
+          { role: 'unhide' },
+          separator,
+          { role: 'quit' },
+        ],
+      },
+      ...standard,
+    ];
+  }
+  return [
+    { label: 'File', submenu: [reset, separator, { role: 'quit' }] },
+    ...standard,
+    { role: 'help', submenu: [about] },
+  ];
+};

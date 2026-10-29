@@ -9,6 +9,7 @@ import { pathToFileURL } from 'node:url';
 import { runtimeConfig, STATIC_SERVER, STATIC_SITE, stagePaths } from './config.mjs';
 import { builderConfig } from './packageConfig.mjs';
 import {
+  buildInfo,
   electronPackageJson,
   esbuildOptions,
   nextBuildEnv,
@@ -137,7 +138,19 @@ const stageElectron = (config, paths, { appDir }) => {
     console.log(`Icon: ${path.relative(config.root, iconFile)}`);
   }
   writeJson(path.join(paths.stage, 'package.json'), electronPackageJson(config));
-  writeJson(path.join(paths.stage, 'app.json'), runtimeConfig(config, { appDir, icon }));
+  const build = buildInfo({
+    version: config.version,
+    git: (args) =>
+      execFileSync('git', args, {
+        cwd: config.root,
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'ignore'],
+      }),
+    env: process.env,
+    now: new Date(),
+  });
+  console.log(`Build: ${[build.version, build.branch, build.commit].filter(Boolean).join(' ')}`);
+  writeJson(path.join(paths.stage, 'app.json'), runtimeConfig(config, { appDir, icon, build }));
 };
 
 export const stageApp = async (config) => {

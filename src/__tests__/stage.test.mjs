@@ -8,6 +8,7 @@ import { afterAll, describe, expect, it } from 'vitest';
 
 import { __dirname as shimDirname, __filename as shimFilename } from '../bundleShims';
 import {
+  buildInfo,
   electronPackageJson,
   esbuildOptions,
   findIcon,
@@ -402,5 +403,53 @@ describe('toolsLockfile', () => {
     expect(() => toolsLockfile({ lock: broken, sharpVersion: undefined })).toThrow(
       'node_modules/yauzl has no integrity hash in package-lock.json.',
     );
+  });
+});
+
+describe('buildInfo', () => {
+  const now = new Date('2026-10-27T14:03:00Z');
+  const git = (answers) => (args) => {
+    const answer = answers[args.join(' ')];
+    if (answer === undefined) throw new Error('not a git repository');
+    return answer;
+  };
+
+  it('takes the branch and commit from git', () => {
+    const checkout = git({
+      'rev-parse --abbrev-ref HEAD': 'feat/x\n',
+      'rev-parse --short HEAD': '2a40250\n',
+    });
+
+    expect(buildInfo({ version: '1.2.3', git: checkout, env: {}, now })).toEqual({
+      version: '1.2.3',
+      branch: 'feat/x',
+      commit: '2a40250',
+      builtAt: '2026-10-27T14:03:00.000Z',
+    });
+  });
+
+  it('takes the branch from GitHub Actions, where the checkout has none', () => {
+    const detached = git({
+      'rev-parse --abbrev-ref HEAD': 'HEAD',
+      'rev-parse --short HEAD': 'abc1234',
+    });
+    const branch = (env) => buildInfo({ version: '1.2.3', git: detached, env, now }).branch;
+
+    expect(branch({ GITHUB_HEAD_REF: 'feat/x', GITHUB_REF_NAME: '14/merge' })).toBe('feat/x');
+    expect(branch({ GITHUB_HEAD_REF: '', GITHUB_REF_NAME: 'v1.2.3' })).toBe('v1.2.3');
+    expect(branch({})).toBeUndefined();
+  });
+
+  it('has only the version and time outside a git checkout', () => {
+    const empty = git({ 'rev-parse --abbrev-ref HEAD': '\n' });
+
+    expect(buildInfo({ version: '1.2.3', git: git({}), env: {}, now })).toEqual({
+      version: '1.2.3',
+      builtAt: '2026-10-27T14:03:00.000Z',
+    });
+    expect(buildInfo({ version: '1.2.3', git: empty, env: {}, now })).toEqual({
+      version: '1.2.3',
+      builtAt: '2026-10-27T14:03:00.000Z',
+    });
   });
 });

@@ -212,6 +212,7 @@ sequenceDiagram
   participant N as Next server
   E->>E: requestSingleInstanceLock (else quit)
   E->>E: read app.json, open servers.log, set permission handler
+  E->>E: set the app menu (standard menus + About, Reset Demo Data)
   E->>W: create window, show the loading page
   E->>S: startServers(config, resourcesDir, execPath, env)
   S->>S: pick a free 127.0.0.1 port per server (all different)

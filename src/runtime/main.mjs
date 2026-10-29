@@ -4,10 +4,17 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { app, BrowserWindow, dialog, session, shell } from 'electron';
+import { app, BrowserWindow, dialog, Menu, session, shell } from 'electron';
 
 import { LOG_NAME, startServers } from './servers.mjs';
-import { isAllowedPermission, isAppUrl, loadingPage, opensExternally } from './window.mjs';
+import {
+  aboutDetail,
+  isAllowedPermission,
+  isAppUrl,
+  loadingPage,
+  menuTemplate,
+  opensExternally,
+} from './window.mjs';
 
 const config = JSON.parse(fs.readFileSync(path.join(import.meta.dirname, 'app.json'), 'utf8'));
 
@@ -30,6 +37,30 @@ const openExternally = (url) => {
   if (opensExternally(url)) shell.openExternal(url);
 };
 
+const showAbout = () =>
+  dialog.showMessageBox(mainWindow, {
+    type: 'info',
+    title: `About ${config.name}`,
+    message: config.name,
+    detail: aboutDetail(config.build),
+  });
+
+// Every launch starts from the servers' seed data with empty storage (see start), so resetting is
+// a restart.
+const resetData = async () => {
+  const { response } = await dialog.showMessageBox(mainWindow, {
+    type: 'question',
+    buttons: ['Reset', 'Cancel'],
+    defaultId: 0,
+    cancelId: 1,
+    message: 'Reset the demo data?',
+    detail: `${config.name} restarts with its original data. Changes made since it opened are lost.`,
+  });
+  if (response !== 0) return;
+  app.relaunch();
+  app.quit();
+};
+
 const createWindow = () => {
   mainWindow = new BrowserWindow({
     width: config.window.width,
@@ -37,7 +68,6 @@ const createWindow = () => {
     title: config.name,
     // The packaged app already has the icon; this one shows in the taskbar under `start` too.
     ...(config.icon && { icon: path.join(import.meta.dirname, config.icon) }),
-    autoHideMenuBar: true,
     webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true },
   });
   // Keep the app's name as the window title, not the page's <title>.
@@ -74,6 +104,16 @@ const start = async () => {
     dialog.showErrorBox(title, `${err.message}\n\n${config.errorHint} Details: ${logFile}`);
     app.quit();
   };
+  Menu.setApplicationMenu(
+    Menu.buildFromTemplate(
+      menuTemplate({
+        name: config.name,
+        isMac: process.platform === 'darwin',
+        onAbout: showAbout,
+        onReset: resetData,
+      }),
+    ),
+  );
   createWindow();
   try {
     running = await startServers({
