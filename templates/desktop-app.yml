@@ -26,7 +26,7 @@ env:
   OUT_DIR: dist-desktop # TODO: `outDir` in terrarium.config.mjs
   # TODO: the web-terrarium version in your package-lock.json. The package jobs run it from public
   # npm before anything is installed, to install the packaging tools.
-  WEB_TERRARIUM_VERSION: 0.2.0
+  WEB_TERRARIUM_VERSION: 0.3.0
   # Packaging downloads the Electron it packs; the runtime `npm install` would download isn't
   # needed in CI.
   ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
