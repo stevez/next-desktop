@@ -33,8 +33,8 @@ export const aboutDetail = (build = {}) => {
 const separator = { type: 'separator' };
 
 // The app's menu: Electron's standard menus, so copy, paste, zoom and reload keep working (on a
-// Mac, Cmd+C and Cmd+V need the Edit menu), plus About and Reset Demo Data. The window hides the
-// menu bar on Windows until Alt is pressed.
+// Mac, Cmd+C and Cmd+V need the Edit menu), plus About and Reset Demo Data. The menu bar is always
+// shown, so people can find them.
 export const menuTemplate = ({ name, isMac, onAbout, onReset }) => {
   const about = { label: `About ${name}`, click: onAbout };
   const reset = { label: 'Reset Demo Data…', click: onReset };

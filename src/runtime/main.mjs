@@ -68,7 +68,6 @@ const createWindow = () => {
     title: config.name,
     // The packaged app already has the icon; this one shows in the taskbar under `start` too.
     ...(config.icon && { icon: path.join(import.meta.dirname, config.icon) }),
-    autoHideMenuBar: true,
     webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true },
   });
   // Keep the app's name as the window title, not the page's <title>.

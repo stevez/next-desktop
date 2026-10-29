@@ -4,7 +4,11 @@
 
 ### Added
 
-- An app menu with **About** (the version, git branch and commit, and build time, recorded by `stage`) and **Reset Demo Data** (restarts the app with its original data). The standard Edit, View and Window menus stay; on Windows the menu bar is still hidden until Alt is pressed.
+- An app menu with **About** (the version, git branch and commit, and build time, recorded by `stage`) and **Reset Demo Data** (restarts the app with its original data). The standard Edit, View and Window menus stay.
+
+### Changed
+
+- The menu bar is always shown on Windows (it was hidden until Alt was pressed), so About and Reset Demo Data are easy to find.
 
 ## 0.2.0
 
