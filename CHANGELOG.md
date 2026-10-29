@@ -4,7 +4,7 @@
 
 ### Added
 
-- An app menu with **About** (the version, git branch and commit, and build time, recorded by `stage`) and **Reset Demo Data** (restarts the app with its original data). About has a **Copy** button, since the text of a message box can't be selected on Windows. The standard Edit, View and Window menus stay.
+- An app menu with **About** (the version, git branch and commit, and build time, recorded by `stage`) and **Reset Demo Data** (restarts the app with its original data). The standard Edit, View and Window menus stay.
 
 ### Changed
 
