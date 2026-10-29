@@ -219,6 +219,14 @@ describe('runtimeConfig', () => {
   });
 });
 
+describe('runtimeConfig build', () => {
+  it('carries the build info for the About box', () => {
+    const build = { version: '1.2.3', commit: '2a40250', builtAt: '2026-10-27T14:03:00.000Z' };
+
+    expect(runtimeConfig(resolve(minimal), { build }).build).toEqual(build);
+  });
+});
+
 describe('runtimeConfig appDir', () => {
   it('starts the app server from its folder inside web/ when Next put it deeper', () => {
     const app = runtimeConfig(resolve(minimal), { appDir: 'development/my-app' }).app;

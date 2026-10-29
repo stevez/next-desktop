@@ -158,6 +158,11 @@ Env values and `app.proxy` targets can use `{host}` (always `127.0.0.1`), `{port
 
 Every launch starts fresh: before the app loads, web-terrarium clears what the app saved in its window last time (local storage, IndexedDB, cookies, cache). Apps whose servers reset on each launch (a mock, an in-memory database) can't end up with stale data in the window, and a demo always starts the same way.
 
+The app's menu has two items of its own, next to the standard Edit, View and Window menus. On Windows the menu bar stays hidden until Alt is pressed; on a Mac they're in the app menu.
+
+- **About** shows which build this is: the version, the git branch and commit it was built from, and when. When feedback comes in a week later, you know which build it was about. `stage` reads them from git; on GitHub Actions the branch comes from the workflow (the PR's branch, or the pushed branch or tag).
+- **Reset Demo Data** restarts the app after asking. Since every launch starts fresh, it comes back with the original data.
+
 The servers' output goes to `servers.log` in the user-data folder: `%APPDATA%\<name>` on Windows, `~/Library/Application Support/<name>` on Mac. Each server logs `[web-terrarium] <server> ready at <url>` once it answers.
 
 ## CI

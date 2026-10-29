@@ -50,6 +50,29 @@ export const findIcon = ({ root, icon }, exists) => {
 // The staged icon's file name, next to main.mjs.
 export const stagedIconName = (icon) => `icon${path.extname(icon).toLowerCase()}`;
 
+// Which build this is, for the app's About box: the version, the git branch and short commit
+// (when the project is a git checkout) and when it was staged. `git(args)` runs git in the project
+// and returns its output. On GitHub Actions the checkout has no branch, so the branch comes from
+// the workflow's env.
+export const buildInfo = ({ version, git, env, now }) => {
+  const run = (args) => {
+    try {
+      return git(args).trim() || undefined;
+    } catch {
+      return undefined;
+    }
+  };
+  const branch =
+    env.GITHUB_HEAD_REF || env.GITHUB_REF_NAME || run(['rev-parse', '--abbrev-ref', 'HEAD']);
+  const commit = run(['rev-parse', '--short', 'HEAD']);
+  return {
+    version,
+    ...(branch && branch !== 'HEAD' && { branch }),
+    ...(commit && { commit }),
+    builtAt: now.toISOString(),
+  };
+};
+
 export const electronPackageJson = (config) => ({
   name: config.artifactName.toLowerCase(),
   productName: config.name,

@@ -165,9 +165,11 @@ const appServer = (config, appDir) => {
 // What the packaged app reads at start-up (app.json next to main.mjs). Build-time settings, such
 // as the app's build env, stay out of it. `appDir` is the Next server's folder inside web/, found
 // at stage time (see standaloneAppDir in stage.mjs). `icon` is the staged icon's file name.
-export const runtimeConfig = (config, { appDir = '', icon } = {}) => ({
+// `build` is the build info for the About box (buildInfo in stage.mjs).
+export const runtimeConfig = (config, { appDir = '', icon, build } = {}) => ({
   name: config.name,
   ...(icon && { icon }),
+  ...(build && { build }),
   window: config.window,
   errorHint: config.errorHint,
   startTimeoutMs: config.startTimeoutMs,
